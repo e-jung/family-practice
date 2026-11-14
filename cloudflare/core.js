@@ -1,5 +1,5 @@
 // REST/SQL port of ../server.js; grading logic remains shared in lib/practice.js.
-import {checkSpelling,compareVerse,trickyWords,words} from "../lib/practice.js";
+import {checkSpelling,compareVerse,trickyWords,words,normalize,scheduleWord,reviewBank} from "../lib/practice.js";
 import {isParent,equalSecret,signSession,cookie,hashPin,validPin,sha256} from "./auth.js";
 const fail = (message, status = 400) => {
   throw Object.assign(Error(message), { status });
@@ -68,6 +68,42 @@ export function createHandler(ctx, env) {
     voices: [],
     serverTts: true,
   });
+  sql.exec(`CREATE TABLE IF NOT EXISTS word_bank(kid_id INTEGER NOT NULL REFERENCES kids(id),key TEXT NOT NULL,word TEXT NOT NULL,word_id INTEGER NOT NULL,list_id INTEGER NOT NULL,box INTEGER NOT NULL,misses INTEGER NOT NULL,tested INTEGER NOT NULL,last_practiced TEXT NOT NULL,due TEXT NOT NULL,PRIMARY KEY(kid_id,key));
+    CREATE INDEX IF NOT EXISTS word_bank_due ON word_bank(kid_id,due)`);
+  for (const [column, definition] of [['sentence', "TEXT NOT NULL DEFAULT ''"], ['seen', 'INTEGER NOT NULL DEFAULT 0'], ['first_try_correct', 'INTEGER NOT NULL DEFAULT 0'], ['last_result', "TEXT NOT NULL DEFAULT 'learning'"]]) {
+    if (!all('PRAGMA table_info(word_bank)').some(c=>c.name===column)) sql.exec(`ALTER TABLE word_bank ADD COLUMN ${column} ${definition}`);
+  }
+  const bankColumns = ['kid_id','key','word','word_id','list_id','box','misses','tested','last_practiced','due','sentence','seen','first_try_correct','last_result'];
+  function saveBank(entry) {
+    const columns = bankColumns.join(',');
+    run(`INSERT INTO word_bank(${columns}) VALUES(${bankColumns.map(()=>'?').join(',')}) ON CONFLICT(kid_id,key) DO UPDATE SET ${bankColumns.slice(2).map(c=>`${c}=excluded.${c}`).join(',')}`,
+      ...bankColumns.map(c=>c==='tested' ? +entry[c] : entry[c]));
+  }
+  function updateWordBank(a) {
+    const key=normalize(a.word), old=get("SELECT * FROM word_bank WHERE kid_id=? AND key=?",a.kid_id,key);
+    const entry=scheduleWord(old,a);
+    if (!entry || entry===old) return;
+    saveBank({...entry,kid_id:a.kid_id,key});
+  }
+  function backfillWordBank() {
+    if (get("SELECT value FROM settings WHERE key='srs_backfill_v1'")) return;
+    tx(()=>{
+      sql.exec('DELETE FROM word_bank');
+      for (const a of all('SELECT a.*,w.sentence FROM attempts a LEFT JOIN words w ON w.id=a.word_id ORDER BY a.id')) updateWordBank(a);
+      run("INSERT INTO settings(key,value) VALUES('srs_backfill_v1','1')");
+    });
+  }
+  backfillWordBank();
+  function wordBank(kid) {
+    if (!get('SELECT id FROM kids WHERE id=? AND archived=0',kid)) fail('Kid not found',404);
+    // Point old/duplicate spellings at the newest active word in this kid's lists.
+    const refs=new Map();
+    for (const w of all('SELECT w.*,l.kid_id FROM words w JOIN lists l ON l.id=w.list_id WHERE l.kid_id=? ORDER BY (l.archived=0 AND w.archived=0),w.id',kid)) refs.set(normalize(w.word),w);
+    return reviewBank(all('SELECT * FROM word_bank WHERE kid_id=?',kid).filter(w=>refs.has(w.key)).map(w=>{
+      const ref=refs.get(w.key);
+      return {...w,tested:!!w.tested,id:ref.id,word_id:ref.id,list_id:ref.list_id,word:ref.word,sentence:ref.sentence};
+    }));
+  }
   function pruneAttempts() {
     const old=all("SELECT id,kind FROM (SELECT id,0 kind,created_at FROM attempts UNION ALL SELECT id,1 kind,created_at FROM verse_attempts) ORDER BY created_at DESC,kind DESC,id DESC LIMIT -1 OFFSET 50000");
     for(const row of old) run(`DELETE FROM ${row.kind ? 'verse_attempts' : 'attempts'} WHERE id=?`,row.id);
@@ -222,6 +258,7 @@ export function createHandler(ctx, env) {
       };
     });
     return {
+      wordBank: wordBank(kid),
       listsCompleted: new Set(
         ss
           .filter((s) => s.completed && s.list_id && s.full_list)
@@ -254,11 +291,25 @@ export function createHandler(ctx, env) {
       version: 1,
       exported_at: now(),
       ...Object.fromEntries(tables.map((t) => [t, all(`SELECT * FROM ${t}`)])),
+      wordBank: all("SELECT * FROM word_bank"),
     };
   }
   function importBackup(b) {
     if (b?.format !== "family-practice" || b.version !== 1)
       fail("Not a version 1 family-practice backup");
+    if (b.wordBank !== undefined) {
+      if (!Array.isArray(b.wordBank) || b.wordBank.length>200000) fail('Invalid word bank');
+      const seen=new Set();
+      for (const w of b.wordBank) {
+        if (!w || typeof w!=='object' || !Number.isSafeInteger(w.kid_id) || !b.kids?.some(k=>k.id===w.kid_id) || typeof w.key!=='string' || w.key!==normalize(w.word) || w.key.length>100 || !w.key || !Number.isSafeInteger(w.box) || w.box<1 || w.box>6 || !Number.isSafeInteger(w.misses) || w.misses<0 || ![0,1].includes(w.tested) || !Number.isSafeInteger(w.word_id) || !Number.isSafeInteger(w.list_id)) fail('Invalid word bank entry');
+        str(w.word,100);str(w.sentence ?? '',500,false);
+        for (const field of ['seen','first_try_correct']) if (w[field] !== undefined && (!Number.isSafeInteger(w[field]) || w[field]<0)) fail('Invalid word bank counts');
+        if (w.last_result !== undefined && !['learning','miss','first_try_correct','retry_correct'].includes(w.last_result)) fail('Invalid word bank result');
+        date(w.due);date(w.last_practiced);
+        if (!w.due || !w.last_practiced || seen.has(w.kid_id+':'+w.key)) fail('Invalid word bank entry');
+        seen.add(w.kid_id+':'+w.key);
+      }
+    }
     const textLimits={kids:{name:60,grade:30},lists:{title:120,date:10},words:{word:100,sentence:500},verses:{reference:120,text:2000,translation:60,due_date:10},attempts:{word:100,typed:200},verse_attempts:{verse_text:2000,verse_reference:120},settings:{key:20,value:200}};
     const schemas = Object.fromEntries(
       tables.map((t) => [t, all(`PRAGMA table_info(${t})`)]),
@@ -269,7 +320,7 @@ export function createHandler(ctx, env) {
       for (const row of b[t]) {
         if (!row || typeof row !== "object" || Array.isArray(row))
           fail("Invalid backup row");
-        if (t === "attempts") { row.mode ??= "test"; row.step ??= 0; if(!["test","learn"].includes(row.mode) || !Number.isSafeInteger(row.step) || (row.mode==="test" ? row.step!==0 : ![0,25,50,75,100].includes(row.step))) fail("Invalid attempt mode/step"); }
+        if (t === "attempts") { row.mode ??= "test"; row.step ??= 0; if(!["test","learn"].includes(row.mode) || (row.mode==="test" ? row.step!==0 : ![0,25,50,75,100,"skip"].includes(row.step))) fail("Invalid attempt mode/step"); }
         if (t === "sessions") {
           row.word_ids ??= "[]";
           row.full_list ??= 0;
@@ -284,7 +335,7 @@ export function createHandler(ctx, env) {
           if (val === null) {
             if (col.notnull) fail("Null backup field");
           } else if (col.type === "INTEGER") {
-            if (!Number.isSafeInteger(val)) fail("Invalid integer");
+            if (!Number.isSafeInteger(val) && !(t === "attempts" && col.name === "step" && row.mode === "learn" && val === "skip")) fail("Invalid integer");
           } else if (typeof val !== "string" || val.length > (textLimits[t]?.[col.name] ?? 10000))
             fail("Invalid backup text");
         }
@@ -339,6 +390,7 @@ export function createHandler(ctx, env) {
       fail("Invalid speed");
     try {
       tx(() => {
+        sql.exec("DELETE FROM word_bank");
         for (const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`);
         for (const t of tables) {
           const cols = schemas[t].map((c) => c.name);
@@ -348,6 +400,11 @@ export function createHandler(ctx, env) {
               ...cols.map((c) => row[c]),
             );
         }
+        run("DELETE FROM settings WHERE key='srs_backfill_v1'");
+        if (b.wordBank) {
+          for (const w of b.wordBank) saveBank({...w,sentence:w.sentence ?? '',seen:w.seen ?? 0,first_try_correct:w.first_try_correct ?? 0,last_result:w.last_result ?? 'learning'});
+        } else for (const a of all('SELECT a.*,w.sentence FROM attempts a LEFT JOIN words w ON w.id=a.word_id ORDER BY a.id')) updateWordBank(a);
+        run("INSERT INTO settings(key,value) VALUES('srs_backfill_v1','1')");
         if (all("PRAGMA foreign_key_check").length)
           fail("Broken backup references");
       });
@@ -478,6 +535,8 @@ export function createHandler(ctx, env) {
         }
         return json(data);
       }
+      if (p === "/api/review" && method === "GET")
+        return json(wordBank(integer(url.searchParams.get("kid"))));
       if (p === "/api/tricky" && method === "GET")
         return json(progress(integer(url.searchParams.get("kid"))).tricky);
       if (p === "/api/sessions" && method === "POST") {
@@ -485,12 +544,13 @@ export function createHandler(ctx, env) {
           kid = integer(b.kid_id);
         if (!get("SELECT id FROM kids WHERE id=? AND archived=0", kid))
           fail("Kid not found", 404);
-        if (!["spelling", "tricky", "verse", "learn"].includes(b.kind))
+        if (!["spelling", "tricky", "verse", "learn", "review"].includes(b.kind))
           fail("Invalid session type");
         const list = b.list_id ? integer(b.list_id) : null;
+        if (b.kind==='review' && list) fail('Review rounds span lists; omit list_id');
         if (
           list &&
-          !get("SELECT id FROM lists WHERE id=? AND kid_id=?", list, kid)
+          !get("SELECT id FROM lists WHERE id=? AND kid_id=? AND archived=0", list, kid)
         )
           fail("List not found", 404);
         const activeIds = list
@@ -511,10 +571,10 @@ export function createHandler(ctx, env) {
           fail("Choose words for this round");
         for (const wordId of wordIds) {
           const w = get(
-            "SELECT w.list_id,l.kid_id FROM words w JOIN lists l ON l.id=w.list_id WHERE w.id=?",
+            "SELECT w.list_id,l.kid_id,w.archived,l.archived list_archived FROM words w JOIN lists l ON l.id=w.list_id WHERE w.id=?",
             wordId,
           );
-          if (!w || w.kid_id !== kid || (list && w.list_id !== list))
+          if (!w || ((w.archived || w.list_archived) && !["review","tricky"].includes(b.kind)) || w.kid_id !== kid || (list && w.list_id !== list))
             fail("Word not in kid's round");
         }
         const fullList =
@@ -556,8 +616,9 @@ export function createHandler(ctx, env) {
                 s.id,
               ).n
             : get("SELECT COUNT(*) n FROM attempts WHERE session_id=?", s.id).n;
-        if (!count) fail("Practice first");
-        if (s.kind !== "verse") {
+        const abandoned = s.kind === 'learn' && (b.abandoned === true || b.skip === true);
+        if (!count && !abandoned) fail("Practice first");
+        if (s.kind !== "verse" && !abandoned) {
           const intended = JSON.parse(s.word_ids);
           const finished = all(
             s.kind==='learn' ? "SELECT word_id FROM attempts WHERE session_id=? AND mode='learn' AND step=100 AND correct=1 GROUP BY word_id" : "SELECT word_id FROM attempts WHERE session_id=? AND mode='test' GROUP BY word_id HAVING SUM(correct)>0 OR COUNT(*)>=2",
@@ -572,7 +633,7 @@ export function createHandler(ctx, env) {
       if (p === "/api/attempts" && method === "POST") {
         const b = await body(req),
           s = get("SELECT * FROM sessions WHERE id=?", str(b.session_id, 64));
-        if (!s || s.completed || !["spelling", "tricky", "learn"].includes(s.kind))
+        if (!s || s.completed || !["spelling", "tricky", "learn", "review"].includes(s.kind))
           fail("Invalid or finished session");
         const w = get(
           "SELECT w.*,l.kid_id FROM words w JOIN lists l ON l.id=w.list_id WHERE w.id=?",
@@ -586,15 +647,16 @@ export function createHandler(ctx, env) {
         )
           fail("Word not in session");
         const mode=b.mode ?? (s.kind==='learn'?'learn':'test'), step=b.step ?? b.level ?? 0;
-        if(!['test','learn'].includes(mode) || !Number.isSafeInteger(step) || (mode==='test' ? step!==0 : ![0,25,50,75,100].includes(step))) fail('Invalid attempt mode/step');
+        if(!['test','learn'].includes(mode) || (mode==='test' ? step!==0 : ![0,25,50,75,100,'skip'].includes(step))) fail('Invalid attempt mode/step');
         const previous = all(
           "SELECT * FROM attempts WHERE session_id=? AND word_id=? AND mode=? AND step=?",s.id,w.id,mode,step);
         if((s.kind==='learn') !== (mode==='learn')) fail('Attempt mode does not match session');
         if (mode==='test' && (previous.length >= 2 || previous.some((a) => a.correct)))
           fail("Word already finished");
         const typed = str(b.typed, 200, false),
-          correct = checkSpelling(w.word, typed),
-          first = previous.length === 0;
+          correct = step !== 'skip' && checkSpelling(w.word, typed),
+          first = step !== 'skip' && previous.length === 0;
+        const created = now();
         run(
           "INSERT INTO attempts(kid_id,list_id,word_id,word,typed,correct,first_try,created_at,session_id,mode,step) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
           s.kid_id,
@@ -604,11 +666,12 @@ export function createHandler(ctx, env) {
           typed,
           +correct,
           +first,
-          now(),
+          created,
           s.id,
           mode,
           step,
         );
+        updateWordBank({kid_id:s.kid_id,word:w.word,sentence:w.sentence,word_id:w.id,list_id:w.list_id,correct,first_try:first,mode,step,created_at:created});
         metric(mode==='learn'?'learn':'test');
         pruneAttempts();
         return json({
@@ -699,13 +762,13 @@ export function createHandler(ctx, env) {
       if (p === "/api/admin/delete-family" && method === "POST") {
         const b=await body(req,2048); await verifyPin(b.pin);
         if(!b.confirmation || (b.confirmation !== family.name && b.confirmation !== env.familyCode)) fail("Type the family name or code exactly");
-        tx(()=>{for(const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`); sql.exec("DELETE FROM pin_limit; DELETE FROM family; DELETE FROM ops_meta; DELETE FROM ops_daily");});
+        tx(()=>{sql.exec("DELETE FROM word_bank");for(const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`); sql.exec("DELETE FROM pin_limit; DELETE FROM family; DELETE FROM ops_meta; DELETE FROM ops_daily");});
         res.setHeader("Set-Cookie",cookie("",0)); return json({ok:true});
       }
       if (p === "/api/admin/remove-kid" && method === "POST") {
         const b=await body(req), id=integer(b.id);
         tx(()=>{
-          for(const t of ["attempts","verse_attempts","sessions"]) run(`DELETE FROM ${t} WHERE kid_id=?`,id);
+          for(const t of ["word_bank","attempts","verse_attempts","sessions"]) run(`DELETE FROM ${t} WHERE kid_id=?`,id);
           run("DELETE FROM words WHERE list_id IN (SELECT id FROM lists WHERE kid_id=?)",id);
           for(const t of ["lists","verses","kids"]) run(`DELETE FROM ${t} WHERE ${t==='kids'?'id':'kid_id'}=?`,id);
         }); return json({ok:true});
