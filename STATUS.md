@@ -83,7 +83,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog-pending
 
-- `sharing` branch: immutable share links, single-admin class feeds, optional verse import, parent-gated multi-kid imports and follows, source labels, abuse reports, aggregate counters, QR encoder, noindex public pages, MCP sharing tools, and additive ShareStore migration `v3`. Shell `v8`; singleton `SHARES` binding; live migration metadata `old_tag: v2 → new_tag: v3` creates only `ShareStore` (first deployment includes v1+v2+v3). Prepared locally only; no production deployment or push.
+- `sharing` branch: immutable share links, single-admin class feeds, optional verse import, parent-gated multi-kid imports and follows, source labels, abuse reports, aggregate counters, QR encoder, noindex public pages, MCP sharing tools, and additive ShareStore migration `v3`. Shell `v8`; singleton `SHARES` binding; live migration metadata `old_tag: v2 → new_tag: v3` creates only `ShareStore` (first deployment includes v1+v2+v3). Verification: 118 unit tests; 65 baseline HTTP assertions; 58 real-Worker sharing assertions (actual ten-minute publish interval); 228 sharing UI assertions; existing browser, parent/practice layout and active-PWA share navigation smokes all passed. Prepared locally only; no production deployment or push.
 
 ## Changelog (deploys)
 
