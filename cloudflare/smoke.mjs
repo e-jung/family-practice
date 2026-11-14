@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 const origin=process.env.SMOKE_URL || 'http://localhost:8792';
 if(!['localhost','127.0.0.1','[::1]'].includes(new URL(origin).hostname))throw Error('Smoke tests require localhost');
 let code='',cookie='',checks=0,requests=0;
+const families=new Map();
 const check=(actual,expected)=>{assert.deepEqual(actual,expected);checks++;};
 async function req(path,data,options={}) {
   requests++;
@@ -9,38 +10,66 @@ async function req(path,data,options={}) {
   if(r.headers.has('set-cookie'))cookie=r.headers.get('set-cookie').split(';')[0];
   const text=await r.text();return {status:r.status,body:r.headers.get('Content-Type')?.includes('json')?JSON.parse(text):text};
 }
-check((await req('/')).status,200);
-const a=await req('/api/families',{name:'Smoke A',pin:'1234'});check(a.status,201);code=a.body.code;const codeA=code,cookieA=cookie;
-check((await req('/api/state')).body.kids,[]);
-const tts=await req('/api/tts?text=hello&lang=en');if(process.env.SMOKE_EXPECT_AI){check(tts.status,200);}else{check(tts.status,503);check(tts.body.error,'voice_unavailable');}
-check((await req('/api/admin/kids',{name:'Alex'})).status,200);
-const list=await req('/api/admin/lists',{kid_id:1,title:'One word',words:[{word:'friend',sentence:'My friend is kind.'}]});check(list.status,201);
-const verse=await req('/api/admin/verses',{kid_id:1,reference:'John 11:35',text:'Jesus wept.',translation:'KJV'});check(verse.status,201);
-const state=(await req('/api/state?kid=1')).body;
-check((await req('/api/parent/lock',{})).status,200);
-check((await req('/api/admin/export')).status,401);
-const session=(await req('/api/sessions',{kid_id:1,list_id:list.body.id,kind:'spelling'})).body;
-check((await req('/api/attempts',{session_id:session.id,word_id:state.lists[0].words[0].id,typed:'friend'})).body.correct,true);
-check((await req('/api/sessions/complete',{session_id:session.id})).status,200);
-check((await req('/api/progress?kid=1')).body.listsCompleted,1);
-const vs=(await req('/api/sessions',{kid_id:1,kind:'verse'})).body;
-check((await req('/api/verse-attempts',{session_id:vs.id,verse_id:verse.body.id,mode:'memory',typed:'Jesus wept!'})).body.accuracy,100);
-check((await req('/api/parent/unlock',{pin:'1234'})).status,200);
-const backup=(await req('/api/admin/export')).body;
-check((await req('/api/admin/import',backup)).status,200);
-const restored=(await req('/api/admin/export')).body;
-check({...restored,exported_at:''},{...backup,exported_at:''});
-const b=await req('/api/families',{name:'Smoke B',pin:'5678'});check(b.status,201);code=b.body.code;const codeB=code,cookieB=cookie;
-check((await req('/api/state?kid=1')).body.kids,[]);
-check((await req('/api/admin/kids',{name:'Sam'})).status,200);
-check((await req('/api/admin/sample',{kid_id:1})).status,200);
-cookie=cookieA;check((await req('/api/admin/export')).status,401);
-check((await req('/api/state')).body.parent,false);
-code=codeA;cookie=cookieB;check((await req('/api/admin/export')).status,401);
-check((await req('/api/state')).body.kids[0].name,'Alex');
-cookie=cookieA;check((await req('/api/admin/delete-family',{pin:'1234',confirmation:'Smoke A'})).status,200);
-check((await req('/api/state')).status,404);
-code=codeB;cookie=cookieB;check((await req('/api/state')).body.kids[0].name,'Sam');
-check((await req('/api/admin/delete-family',{pin:'5678',confirmation:'Smoke B'})).status,200);
-check((await req('/api/state')).status,404);
+async function createFamily(name,pin) {
+  const result=await req('/api/families',{name,pin});
+  if(result.status===201 && result.body.code)families.set(result.body.code,{name,pin});
+  if(result.status===429)throw Error(`Local smoke family creation was rate-limited (HTTP 429): ${result.body.error || 'creation quota reached'}. Wait for the quota window to reset or use a fresh disposable local Wrangler state directory; deleting families does not reset the creation quota.`);
+  check(result.status,201);
+  return result;
+}
+let smokeError;
+try {
+  check((await req('/')).status,200);
+  const a=await createFamily('Smoke A','1234');code=a.body.code;const codeA=code,cookieA=cookie;
+  check((await req('/api/state')).body.kids,[]);
+  const tts=await req('/api/tts?text=hello&lang=en');if(process.env.SMOKE_EXPECT_AI){check(tts.status,200);}else{check(tts.status,503);check(tts.body.error,'voice_unavailable');}
+  check((await req('/api/admin/kids',{name:'Alex'})).status,200);
+  const list=await req('/api/admin/lists',{kid_id:1,title:'One word',words:[{word:'friend',sentence:'My friend is kind.'}]});check(list.status,201);
+  const verse=await req('/api/admin/verses',{kid_id:1,reference:'John 11:35',text:'Jesus wept.',translation:'KJV'});check(verse.status,201);
+  const state=(await req('/api/state?kid=1')).body;
+  check((await req('/api/parent/lock',{})).status,200);
+  check((await req('/api/admin/export')).status,401);
+  const session=(await req('/api/sessions',{kid_id:1,list_id:list.body.id,kind:'spelling'})).body;
+  check((await req('/api/attempts',{session_id:session.id,word_id:state.lists[0].words[0].id,typed:'friend'})).body.correct,true);
+  check((await req('/api/sessions/complete',{session_id:session.id})).status,200);
+  check((await req('/api/progress?kid=1')).body.listsCompleted,1);
+  const vs=(await req('/api/sessions',{kid_id:1,kind:'verse'})).body;
+  check((await req('/api/verse-attempts',{session_id:vs.id,verse_id:verse.body.id,mode:'memory',typed:'Jesus wept!'})).body.accuracy,100);
+  check((await req('/api/parent/unlock',{pin:'1234'})).status,200);
+  const backup=(await req('/api/admin/export')).body;
+  check((await req('/api/admin/import',backup)).status,200);
+  const restored=(await req('/api/admin/export')).body;
+  check({...restored,exported_at:''},{...backup,exported_at:''});
+  const b=await createFamily('Smoke B','5678');code=b.body.code;const codeB=code,cookieB=cookie;
+  check((await req('/api/state?kid=1')).body.kids,[]);
+  check((await req('/api/admin/kids',{name:'Sam'})).status,200);
+  check((await req('/api/admin/sample',{kid_id:1})).status,200);
+  cookie=cookieA;check((await req('/api/admin/export')).status,401);
+  check((await req('/api/state')).body.parent,false);
+  code=codeA;cookie=cookieB;check((await req('/api/admin/export')).status,401);
+  check((await req('/api/state')).body.kids[0].name,'Alex');
+  cookie=cookieA;check((await req('/api/admin/delete-family',{pin:'1234',confirmation:'Smoke A'})).status,200);families.delete(codeA);
+  check((await req('/api/state')).status,404);
+  code=codeB;cookie=cookieB;check((await req('/api/state')).body.kids[0].name,'Sam');
+  check((await req('/api/admin/delete-family',{pin:'5678',confirmation:'Smoke B'})).status,200);families.delete(codeB);
+  check((await req('/api/state')).status,404);
+} catch(error) {
+  smokeError=error;
+  throw error;
+} finally {
+  const cleanupErrors=[];
+  for(const [familyCode,{name,pin}] of families) {
+    try {
+      code=familyCode;cookie='';
+      const unlocked=await req('/api/parent/unlock',{pin});
+      if(unlocked.status!==200)throw Error(`unlock returned HTTP ${unlocked.status}`);
+      const deleted=await req('/api/admin/delete-family',{pin,confirmation:name});
+      if(deleted.status!==200)throw Error(`delete returned HTTP ${deleted.status}`);
+      families.delete(familyCode);
+    } catch(error) {
+      cleanupErrors.push(new Error(`Failed to clean up ${name}: ${error.message}`,{cause:error}));
+    }
+  }
+  if(cleanupErrors.length)throw new AggregateError(smokeError?[smokeError,...cleanupErrors]:cleanupErrors,'Local smoke failed to clean up disposable families');
+}
 console.log(`PASS: ${requests} local HTTP requests, ${checks} assertions; two families, practice, restore, cross-family isolation and deletion.`);
