@@ -274,6 +274,7 @@ try {
     else {
       // Saved device choice must bypass cloud; switching back clears the failure cooldown.
       await page.getByRole('button',{name:'Parent mode',exact:true}).click();
+      if (!await page.locator('.parent-more').evaluate(e => e.open)) await page.locator('.parent-more > summary').click();
       await page.getByRole('button',{name:'This device',exact:true}).click();
       assert.equal(await page.getByLabel('Reading voice').inputValue(),'cloud');
       await page.getByLabel('Reading voice').selectOption('device');

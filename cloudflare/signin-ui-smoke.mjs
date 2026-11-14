@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {mkdir, writeFile} from 'node:fs/promises';
 import {resolve, join} from 'node:path';
-import {buildWeeklyDigest} from './emails.js';
+import {buildWeeklyDigest,buildPracticeNotice,buildSignInEmail} from './emails.js';
 const base = new URL(process.env.SMOKE_URL || 'http://localhost:8792');
 if (!['localhost','127.0.0.1','[::1]'].includes(base.hostname) || base.username || base.password) throw Error('Disposable localhost Worker only');
 const origin = base.origin;
@@ -49,6 +49,7 @@ async function contextFor(viewport,label) {
   return context;
 }
 async function shot(page,label,dialog=false) {
+  if (!label.startsWith('email-preferences-saved')) await page.locator('#toast').waitFor({state:'hidden'});
   check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${label}: no horizontal overflow`);
   const bounds = await page.locator('dialog[open]').evaluateAll(ds=>ds.map(d=>{
     const r=d.getBoundingClientRect();
@@ -60,10 +61,11 @@ async function shot(page,label,dialog=false) {
     for(const b of d.actions)check(b.left>=0 && b.right<=page.viewportSize().width+1 && b.top>=0 && b.bottom<=page.viewportSize().height+1,`${label}: ${b.text} visible`);
   }
   csp.push(...await page.evaluate(()=>window.__smokeCsp || []));
-  await page.screenshot({path:join(out,label+'.png'),fullPage:!dialog});screenshots.push(label+'.png');
+  await page.screenshot({path:join(out,label+'.png'),fullPage:!dialog && !label.startsWith('email-preferences-saved')});screenshots.push(label+'.png');
 }
 async function manage(page) {
   await page.locator('header').getByRole('button',{name:'Parent mode',exact:true}).click();
+  if (!await page.locator('.parent-more').evaluate(e => e.open)) await page.locator('.parent-more > summary').click();
   await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:/^(Parent sign-in|Sign-in & email)$/}).click();
   await page.getByRole('heading',{name:'Parents linked to this family',exact:true}).waitFor();
 }
@@ -96,7 +98,9 @@ try {
     await page.getByRole('heading',{name:'Parent sign-in (optional)',exact:true}).waitFor();
     await shot(page,`landing-${size}`);
     await page.getByRole('button',{name:'Email me a code',exact:true}).click();
-    await signin(page,context,email,`unlinked-${size}`);
+    const unlinkedEmail='unlinked-'+email;
+    identities.push({context,email:unlinkedEmail});
+    await signin(page,context,unlinkedEmail,`unlinked-${size}`);
     await page.getByText('No linked families yet.',{exact:false}).waitFor();
     check((await api(context,'/api/auth/session')).families.length===0,'first sign-in has no family');
     await shot(page,`no-linked-family-${size}`);
@@ -111,22 +115,48 @@ try {
     await page.locator('header').getByRole('button',{name:'Parent mode',exact:true}).click();
     await page.getByLabel('Parent PIN',{exact:true}).fill(pin);
     await page.getByRole('button',{name:'Unlock',exact:true}).click();
-    await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:/^(Parent sign-in|Sign-in & email)$/}).click();
+    if (!await page.locator('.parent-more').evaluate(e => e.open)) await page.locator('.parent-more > summary').click();
+  await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:/^(Parent sign-in|Sign-in & email)$/}).click();
     await page.getByRole('button',{name:'Link an email',exact:true}).waitFor();
     await shot(page,`pin-parent-link-${size}`);
     await page.getByRole('button',{name:'Link an email',exact:true}).click();
     await signin(page,context,email,`link-${size}`);
     await page.getByRole('button',{name:'Save email preferences',exact:true}).waitFor();
     check((await api(context,'/api/auth/session')).families.length===1,'PIN-unlocked email link persists');
+    check(await page.locator('.identity-block h2').allTextContents().then(h => JSON.stringify(h) === JSON.stringify(['Your sign-in','Parents linked to this family','Email reminders'])),'three clear identity blocks');
+    check(!await page.getByRole('button',{name:'Recover family codes',exact:true}).count(),'recovery is outside identity settings');
+    check(!await page.locator('#app').evaluate(e => /\b(null|undefined)\b/.test(e.innerText)),'no null or undefined rendered');
     await shot(page,`parent-signin-email-${size}`);
     await page.getByLabel('Weekly practice summary',{exact:true}).check();
     await page.getByLabel('Time zone',{exact:true}).fill('UTC');
     await page.getByRole('button',{name:'Save email preferences',exact:true}).click();
     await page.getByText('Email preferences saved.',{exact:true}).waitFor();
+    check(await page.evaluate(() => {
+      const toast = document.querySelector('#toast').getBoundingClientRect(), active = document.querySelector('#identity-timezone').closest('form').querySelector('[type=submit]').getBoundingClientRect();
+      return toast.bottom <= innerHeight - 15 && (active.bottom <= toast.top || active.top >= toast.bottom);
+    }), 'saved toast stays above safe area and clear of active control');
+    await shot(page,`email-preferences-saved-${size}`);
     check((await api(context,'/api/auth/session')).prefs.weekly===true,'opt-in saved by real preferences API');
     await page.getByRole('button',{name:'Sign out',exact:true}).click();
     await page.getByRole('button',{name:'Unlock Parent mode',exact:true}).waitFor();
     check(!(await api(context,'/api/auth/session')).signedIn,'UI signout clears account');
+    await page.getByRole('button',{name:'Unlock Parent mode',exact:true}).click();
+    await page.getByLabel('Parent PIN',{exact:true}).fill(pin);
+    await page.getByRole('button',{name:'Unlock',exact:true}).click();
+    await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:'Family',exact:true}).click();
+    await page.getByRole('button',{name:'Recover family codes',exact:true}).click();
+    await signin(page,context,email,`family-recovery-${size}`);
+    const familyRecovery=page.getByRole('dialog',{name:'Recover family codes',exact:true});
+    await familyRecovery.getByText(family.code,{exact:true}).waitFor();
+    check(await familyRecovery.isVisible(),'Family recovery continues through signed-out email sign-in');
+    await shot(page,`family-section-recovery-${size}`,true);
+    await familyRecovery.getByRole('button',{name:'Close',exact:true}).click();
+    await page.evaluate(()=>sessionStorage.setItem('family-practice-recover','1'));
+    await page.goto(origin+'/?signedIn=1');
+    await page.getByRole('dialog',{name:'Recover family codes',exact:true}).getByText(family.code,{exact:true}).waitFor();
+    check(await page.evaluate(()=>!sessionStorage.getItem('family-practice-recover')),'OAuth-return recovery intent is consumed once (provider not called)');
+    await page.getByRole('dialog',{name:'Recover family codes',exact:true}).getByRole('button',{name:'Close',exact:true}).click();
+
     const fresh=await contextFor(viewport,`new-device-${size}`), freshPage=await fresh.newPage();
     identities.push({context:fresh,email});
     await freshPage.goto(origin);
@@ -151,6 +181,8 @@ try {
       await recovery.getByText(f.code,{exact:true}).waitFor();
       check(await recovery.getByText(f.code,{exact:true}).isVisible(),'recovery shows linked family code');
     }
+    check(await recovery.locator('.identity-actions').evaluateAll(rows => rows.every(row => {const [a,b] = [...row.querySelectorAll('button')].map(e => e.getBoundingClientRect()); return Math.abs(a.width-b.width)<1;})), 'recovery actions have equal widths');
+    check(await recovery.locator('.recovery-code').evaluateAll(codes => codes.every(e => e.scrollWidth <= e.clientWidth)), 'family codes fit without breaking words');
     await shot(freshPage,`recover-codes-${size}`,true);
     await recovery.getByRole('button',{name:'Close',exact:true}).click();
     await freshPage.getByRole('button',{name:'Open '+second.name,exact:true}).click();
@@ -158,13 +190,16 @@ try {
     check(await freshPage.evaluate(()=>localStorage.getItem('family-practice-code'))===second.code,'picker opens selected second family');
     await manage(freshPage);
     await shot(freshPage,`two-family-parent-signin-${size}`);
-    const digest=buildWeeklyDigest({familyName:'The Sample Family',kids:[{name:'Sam',attempts:42,accuracy:88,streak:4,dueWords:6,lists:['Kind words'],trickyWords:['friend','beautiful'],verseStarsChange:2},{name:'Alex',attempts:28,accuracy:93,streak:3,dueWords:4}],practiceUrl:origin+'/',unsubscribe:origin+'/unsubscribe/sample-preview'});
+    const digest=buildWeeklyDigest({familyName:'The Sample Family',kids:[{name:'Sam',attempts:42,accuracy:88,practiceDays:4,streak:4,dueWords:6,lists:['Kind words'],trickyWords:['friend','beautiful'],verseStarsChange:2},{name:'Alex',attempts:28,accuracy:93,practiceDays:3,streak:3,dueWords:4}],practiceUrl:origin+'/',unsubscribe:origin+'/unsubscribe/sample-preview'});
     check(!digest.text.includes(family.code) && !digest.text.includes(email),'digest sample excludes live fixture identifiers');
-    await writeFile(join(out,`weekly-email-${size}.html`),digest.html);
-    const mail=await fresh.newPage();
-    await mail.setContent('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sample weekly email</title></head><body>'+digest.html+'</body></html>');
-    await mail.getByText('Sam: 42 practice attempts',{exact:false}).waitFor();
-    await shot(mail,`weekly-email-${size}`);
+    const examples = {'weekly-email': digest, 'class-update-email': buildPracticeNotice({kind:'classUpdates',familyName:'The Sample Family',practiceUrl:origin+'/',unsubscribe:origin+'/unsubscribe/sample-preview'}), 'review-nudge-email': buildPracticeNotice({kind:'review',familyName:'The Sample Family',dueWords:10,practiceUrl:origin+'/',unsubscribe:origin+'/unsubscribe/sample-preview'}), 'signin-code-email': buildSignInEmail({code:'012345'})};
+    for (const [label, message] of Object.entries(examples)) {
+      await writeFile(join(out,`${label}-${size}.html`),message.html);
+      const mail=await fresh.newPage();
+      await mail.setContent(message.html);
+      await mail.getByRole('heading',{name:label==='weekly-email'?'Sam':label==='signin-code-email'?'Your sign-in code':message.subject,exact:true}).waitFor();
+      await shot(mail,`${label}-${size}`);
+    }
   }
   check(errors.length===0,`browser JS errors: ${JSON.stringify(errors)}`);
   check(external.length===0,`external requests blocked before network: ${JSON.stringify(external)}`);

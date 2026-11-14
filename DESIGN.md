@@ -31,6 +31,13 @@ Section tone is set with `data-tone` on `#app` (spelling, verses, progress, pare
 - **Keyboard** (`keyboard.js`): docked at the bottom of the desk on touch; white keys on #DFE2DA, marigold pressed state, primary action as the widest bottom key.
 - **Icons** (`icons.js`): one 24px, 2px round-stroke set. No emoji.
 
+## Parent tools and email
+
+- Parent navigation uses one four-column primary row: Kids · Lists · Verses · Family. A native “More” disclosure holds the six secondary tools in a two-column grid and stays open for an active secondary section.
+- Sign-in & email has three ruled blocks: Your sign-in, Parents linked to this family, Email reminders. Paired actions share equal-width rows; a single block action fills its row. Code recovery lives on landing and Family, not in identity settings. Recovery codes break only at hyphens.
+- Toasts sit 16px above the bottom safe area, leave scroll space, and keep the saved control clear of the message.
+- Emails use the same cobalt/ink/ground palette in a ≤600px inline-styled presentation table, system fonts, one primary CTA, and a muted opt-in/manage/unsubscribe footer. No remote assets or fonts.
+
 ## Motion and feedback
 - One authored moment: landing demo letters fade into marigold blanks. Everything else is ≤150ms state change; `prefers-reduced-motion` disables all of it.
 - Key sound (Kenney CC0 tick) and haptics are per-device, default on (kids like the click; Incord defaults off), never before a gesture. iOS haptics use a transparent native `<input switch>` overlay on every button.

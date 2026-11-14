@@ -51,7 +51,7 @@ Deployment preparation adds `ACCOUNTS` → `AccountStore`, additive migration `v
 ## Roadmap
 
 **Done on pending branch**
-- Optional parent Google/email-code sign-in, linked-family code recovery, preferences and opt-in hourly email processing; AccountStore migration v4 and shell v9 (not deployed).
+- Optional parent Google/email-code sign-in, linked-family code recovery, preferences and opt-in hourly email processing; AccountStore migration v4 and shell v10 (not deployed).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
@@ -95,8 +95,10 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog — pending
 
+- `signin` review fixes, shell v10: removed native-append null text; split identity settings into Your sign-in / Parents linked to this family / Email reminders; equal-width action rows; recovery retained on landing and added to Family with hyphen-only code breaks. Parent tools now have Kids · Lists · Verses · Family plus a collapsible More group. Toasts reserve bottom safe-area space and keep Save clear. All four email types share a cobalt, system-font, inline-styled table layout; weekly summaries now include actual practice days. Eight HTML/text golden fixtures cover weekly, class update, review nudge and sign-in code emails.
+
 - `signin`: optional parent identities and code recovery; Family Code/PIN-only access unchanged. Singleton AccountStore v4, Google state/PKCE flow, hashed emailed codes, masked family links, opt-in Sunday 5pm weekly summaries, Tuesday/Friday review nudges and hourly batched class updates, signed one-click unsubscribe, numeric mail counters and a 500/day reservation cap. Google/Resend live delivery and production cron are unverified; no production changes made.
-- Verification: 142 unit tests, uploader zero-network dry-run, local email-sink recovery smoke (76 checks), core API smoke (53 requests/65 assertions), desktop/mobile UI and parent/practice/sharing layout smokes pass. Sign-in UI smoke passes 135 assertions at desktop and 390×844, saves 30 screenshots plus two email HTML samples, and reports zero console/CSP/third-party-request errors. Class publication API smoke also passes all 58 assertions, including the real ten-minute publish throttle. Independent auth review findings were fixed with regressions (pending-link revocation, safe Lock, auth lookup throttles, full multi-family digests).
+- Verification: 148 unit tests (including eight email golden fixtures), uploader zero-network dry-run, local email-sink recovery smoke (76 checks), core API smoke (53 requests/65 assertions), desktop/mobile UI and parent/practice/sharing layout smokes pass. Sign-in UI smoke passes 193 assertions at desktop and 390×844, saves 44 screenshots plus eight email HTML samples, and reports zero console/CSP/third-party-request errors. Class publication API smoke also passes all 58 assertions, including the real ten-minute publish throttle. Independent auth review findings were fixed with regressions (pending-link revocation, safe Lock, auth lookup throttles, full multi-family digests).
 
 ## Changelog (deploys)
 

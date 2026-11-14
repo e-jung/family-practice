@@ -1,0 +1,21 @@
+Family Practice — Example family
+
+Weekly practice
+
+Here is your weekly Family Practice summary.
+
+Sam:
+4 practice attempts, 75% first-try accuracy, 2-day streak, 3 words due for review.
+Practice days this week: 3.
+Lists practiced: Autumn week.
+Tricky words: friend, light.
+★ Verse stars this week: +2.
+
+Alex:
+0 practice attempts, first-try accuracy: Not available, 0-day streak, 1 words due for review.
+Practice days this week: 0.
+
+Open Family Practice: https://example.test/
+You're receiving this because you turned on weekly summaries.
+Manage email preferences: https://example.test/
+Unsubscribe: https://example.test/auth/unsubscribe?token=example&test=1

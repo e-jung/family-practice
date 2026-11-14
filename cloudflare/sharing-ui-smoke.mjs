@@ -96,7 +96,7 @@ try {
     await goto(page,'/');
     await page.getByRole('button',{name:'Publisher',exact:false}).click();
     await parent(page);
-    await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:'Spelling lists',exact:true}).click();
+    await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:'Lists',exact:true}).click();
     const row=page.getByText(title,{exact:true}).locator('xpath=ancestor::*[.//button[normalize-space()="Share"]][1]');
     await row.getByRole('button',{name:'Share',exact:true}).click();
     await page.getByLabel('Note (optional, 140 characters)',{exact:true}).fill('Practice a little each day.');
@@ -110,6 +110,7 @@ try {
     check(await page.getByRole('img',{name:'QR code for this link'}).locator('svg').count()===1,'Share sheet renders local SVG QR');
     await shot(page,`share-qr-${size}`,true);
     await closeSheet(page);
+    if (!await page.locator('.parent-more').evaluate(e => e.open)) await page.locator('.parent-more > summary').click();
     await page.getByRole('navigation',{name:'Parent sections'}).getByRole('button',{name:'Class lists',exact:true}).click();
     await page.getByRole('button',{name:'+ Create class list',exact:true}).click();
     await page.getByLabel('Class list name',{exact:true}).fill(className);

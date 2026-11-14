@@ -11,7 +11,7 @@ await mkdir(out, {recursive: true});
 const browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox']});
 const errors = [], external = [], report = [];
 const pin = '2468', listTitle = 'Sixteen word smoke list', verseReference = 'Psalm 23:1';
-const sections = ['Kids', 'Spelling lists', 'Bible verses', 'Shared lists', 'Class lists', 'Following', 'This device', 'Family', 'Connect an AI assistant'];
+const sections = ['Kids', 'Spelling lists', 'Bible verses', 'Shared lists', 'Class lists', 'Following', 'This device', 'Sign-in & email', 'Family', 'Connect an AI assistant'];
 let fixture, code;
 async function call(context, path, data) {
   const response = await context.request.post(origin + path, {headers: {'X-Family-Code': code || ''}, data});
@@ -101,7 +101,11 @@ try {
     assert.equal(await page.getByRole('dialog').count(), 0, 'Parent mode opens a page, not a modal');
     await page.locator('header').getByRole('button', {name: 'Lock', exact: true}).waitFor();
     for (const section of sections) {
-      await page.getByRole('button', {name: section, exact: true}).click();
+      const primary = ['Kids','Spelling lists','Bible verses','Family'];
+      if (!primary.includes(section) && !await page.locator('.parent-more').evaluate(e => e.open)) await page.locator('.parent-more > summary').click();
+      assert.deepEqual(await page.locator('.parent-primary button').allTextContents(), ['Kids','Lists','Verses','Family']);
+      await page.getByRole('navigation', {name:'Parent sections'}).getByRole('button', {name: ({'Spelling lists':'Lists','Bible verses':'Verses'})[section] || section, exact: true}).click();
+      if (section === 'Sign-in & email') await page.getByRole('heading', {name:'Parents linked to this family',exact:true}).waitFor();
       await noOverflow(page, `${section}-${label}`);
       const slug = section.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-');
       await page.screenshot({path: `${out}/parent-${slug}-${label}.png`, fullPage: true});
@@ -142,7 +146,7 @@ try {
   assert.deepEqual(errors, [], 'no browser page errors');
   assert.deepEqual(external, [], 'no third-party browser requests');
   await writeFile(`${out}/parent-layout-report.json`, JSON.stringify({viewports: ['390x844', '360x740', '1440x1000'], dialogs: report, errors, external}, null, 2));
-  console.log(`PASS: three kid tabs; dedicated Parent page and separate Lock; all nine parent sections; list/verse dialogs including dates and Save/Cancel fit without page scrolling; created connection URLs captured at 390×844, 360×740, 1440×1000. Screenshots: ${out}`);
+  console.log(`PASS: three kid tabs; dedicated Parent page and separate Lock; all ten parent sections in primary/More groups; list/verse dialogs including dates and Save/Cancel fit without page scrolling; created connection URLs captured at 390×844, 360×740, 1440×1000. Screenshots: ${out}`);
 } finally {
   if (fixture && code) {
     try {

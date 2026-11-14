@@ -382,8 +382,22 @@ details:not(:has(.danger)) > summary { color: inherit; }
 }
 
 /* Parent tools never compete with the child's three file tabs. */
-.parent-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 24px; }
-.parent-nav button { flex: 1 1 145px; }
+.parent-nav { margin-block: 24px; }
+.parent-primary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.parent-primary button { padding-inline: 6px; }
+.parent-more { margin-top: 12px; }
+.parent-more summary { min-height: 44px; cursor: pointer; font-weight: bold; padding-block: 10px; }
+.parent-secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-block: 8px; }
+.identity-block { margin-bottom: 32px; }
+.identity-actions { display: flex; gap: 8px; margin-block: 16px; }
+.identity-actions > button { flex: 1 1 0; min-width: 0; }
+.identity-block .form-actions > button { width: 100%; }
+.identity-parent { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; padding-block: 12px; border-bottom: 1px solid var(--ink-2); }
+.identity-parent span { overflow-wrap: anywhere; }
+.recovery-code { display: block; overflow-wrap: normal; word-break: normal; }
+body:has(#toast[style*="block"]) #app { padding-bottom: 110px; }
+#toast { pointer-events: none; bottom: calc(16px + env(safe-area-inset-bottom)); }
+
 .parent-nav button.active { background: var(--slate); color: white; }
 input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; width: 100%; min-height: 48px; }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; min-width: 0; }

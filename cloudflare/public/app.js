@@ -53,9 +53,13 @@ function el(tag, attrs = {}, ...children) {
       );
   return n;
 }
-function toast(s) {
+function toast(s, control = document.activeElement) {
   $("toast").textContent = s;
   $("toast").style.display = "block";
+  if (control instanceof HTMLElement && control !== document.body) {
+    const overlap = control.getBoundingClientRect().bottom - $("toast").getBoundingClientRect().top + 12;
+    if (overlap > 0) window.scrollBy({top: overlap, behavior: "instant"});
+  }
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => ($("toast").style.display = "none"), 4500);
 }
@@ -1206,9 +1210,16 @@ function parentHome() {
   header();
   app.append(el("div", { class: "band" }, el("div", { class: "band-head" },
     el("h1", {}, "Parent"), button("Done", () => { parentPage = false; render(); }, "secondary small"))));
-  app.append(el("nav", { class: "parent-nav", "aria-label": "Parent sections" }, PARENT_SECTIONS.map(name =>
-    button(name, () => { parentSection = name; parentHome(); window.scrollTo(0, 0); }, name === parentSection ? "active" : "secondary"))));
-  app.querySelector(".parent-nav .active")?.setAttribute("aria-current", "page");
+  const primary = ["Kids", "Spelling lists", "Bible verses", "Family"];
+  const navButton = name => {
+    const control = button(({"Spelling lists": "Lists", "Bible verses": "Verses"})[name] || name, () => { parentSection = name; parentHome(); window.scrollTo(0, 0); }, name === parentSection ? "active" : "secondary");
+    if (name === parentSection) control.setAttribute("aria-current", "page");
+    return control;
+  };
+  app.append(el("nav", {class: "parent-nav", "aria-label": "Parent sections"},
+    el("div", {class: "parent-primary"}, primary.map(navButton)),
+    el("details", {class: "parent-more", open: !primary.includes(parentSection)}, el("summary", {}, "More"),
+      el("div", {class: "parent-secondary"}, PARENT_SECTIONS.filter(name => !primary.includes(name)).map(navButton)))));
   if (["Shared lists", "Class lists", "Following"].includes(parentSection)) {
     const host = el("div", {}, el("p", {}, "Loading…")); app.append(host);
     sharing[parentSection === "Shared lists" ? "sharedAdmin" : parentSection === "Class lists" ? "classesAdmin" : "followsAdmin"](host).catch(err => host.replaceChildren(el("p", {role:"alert"}, err.message), button("Try again", parentHome, "secondary"))); return;
@@ -1398,6 +1409,7 @@ function familyControls() {
     el("p", {}, "Your family code opens practice on another device. The parent PIN protects settings and backups. Keep both safe. Optional Parent sign-in can recover a linked family’s code; it does not recover your PIN."),
     el("div", { class: "row" },
       button("Save your family code", codeCard, "secondary"),
+      identity.available() || identity.signedIn() ? button("Recover family codes", identity.recoverCodes, "secondary") : null,
       button("Add sample practice", async () => {
         const target = kid || state.kids[0];
         if (!target) { toast("Add a kid first, then add sample practice."); return; }

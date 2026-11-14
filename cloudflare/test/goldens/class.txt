@@ -1,0 +1,11 @@
+Family Practice — Example family
+
+A new class practice list is ready
+
+A class you follow has a new week ready.
+Open Family Practice to choose what to import.
+
+Open Family Practice: https://example.test/
+You’re receiving this because you opted in to class-list updates in Family Practice.
+Manage email preferences: https://example.test/
+Unsubscribe: https://example.test/auth/unsubscribe?token=example&test=1
