@@ -538,7 +538,7 @@ export function createHandler(ctx, env) {
         if(result!==undefined)return json(result,method==='POST'&&['/api/admin/shares','/api/admin/classes'].includes(p)?201:200);
       }
       if(p==='/api/admin/connections' && method==='GET')return json({connections:all(`SELECT ${connectionFields} FROM mcp_connections ORDER BY created_at,id`)});
-      if(p==='/api/admin/connections' && method==='POST')return json(await createConnection(sql,env.familyIdHash,await body(req,2048)),201);
+      if(p==='/api/admin/connections' && method==='POST')return json(await createConnection(sql,env.familyIdHash,await body(req,2048),env.SESSION_SECRET),201);
       if(p==='/api/admin/connections/revoke' && method==='POST') {
         const b=await body(req,2048);const id=str(b.id,64);
         if(!get('SELECT id FROM mcp_connections WHERE id=?',id))fail('Connection not found',404);

@@ -1319,7 +1319,7 @@ async function assistantControls() {
     const result = await api("/api/admin/connections");
     if (viewVersion !== version) return;
     connections.replaceChildren(...result.connections.map(c => el("div", { class: "section" },
-      el("strong", {}, c.name), el("p", { class: "meta" }, `${c.scope === "read-only" ? "Read only" : "Add & read"} · Created ${niceDate(c.created_at)} · Last used: ${c.last_used_at ? new Date(c.last_used_at).toLocaleString() : "Not yet"}`),
+      el("strong", {}, c.name), ...(c.format !== "fpc2" ? [el("p", { class: "meta" }, "Retired — create a new link")] : []), el("p", { class: "meta" }, `${c.scope === "read-only" ? "Read only" : "Add & read"} · Created ${niceDate(c.created_at)} · Last used: ${c.last_used_at ? new Date(c.last_used_at).toLocaleString() : "Not yet"}`),
       button("Revoke", async () => { if (!confirm(`Revoke ${c.name}? Its link will stop working.`)) return; await api("/api/admin/connections/revoke", { id: c.id }); shown.replaceChildren(); await refresh(); }, "secondary small"))));
     if (!result.connections.length) connections.append(el("p", { class: "muted" }, "No connections yet."));
   };

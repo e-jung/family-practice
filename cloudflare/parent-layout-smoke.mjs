@@ -77,7 +77,7 @@ try {
   await call(fixture, '/api/admin/verses', {kid_id: kid.id, reference: verseReference, text: 'The LORD is my shepherd; I shall not want.', translation: 'KJV', due_date: '2026-11-20'});
   for (const viewport of [{width: 390, height: 844}, {width: 360, height: 740}, {width: 1440, height: 1000}]) {
     const label = `${viewport.width}x${viewport.height}`;
-    const context = await browser.newContext({extraHTTPHeaders:smokeHeaders,viewport, isMobile: viewport.width < 600, hasTouch: viewport.width < 600, reducedMotion: 'reduce'});
+    const context = await browser.newContext({serviceWorkers:'block',extraHTTPHeaders:smokeHeaders,viewport, isMobile: viewport.width < 600, hasTouch: viewport.width < 600, reducedMotion: 'reduce'});
     // APIRequestContext shares the browser context's cookie jar; no forged cookie.
     await call(context, '/api/parent/unlock', {pin});
     await context.addInitScript(code => {
@@ -127,6 +127,25 @@ try {
         await page.getByText(/https?:\/\//).or(page.locator('input[value^="http"], textarea')).first().waitFor();
         await noOverflow(page, `created-connection-${label}`);
         await page.screenshot({path: `${out}/parent-connection-created-${label}.png`, fullPage: true});
+        // Exercise migrated/retired metadata using real rows and real revocation.
+        // Only the list response is adapted; no legacy-link creation API is exposed.
+        // This layout context blocks SW interception; ui-smoke separately tests the real SW.
+        const retiredList = async route => {
+          const response = await route.fetch(), data = await response.json();
+          data.connections = data.connections.map(c => ({...c, format:'retired'}));
+          await route.fulfill({response, json:data});
+        };
+        await page.route('**/api/admin/connections', retiredList);
+        await page.getByRole('navigation', {name:'Parent sections'}).getByRole('button', {name:'Family',exact:true}).click();
+        if (!await page.locator('.parent-more').evaluate(e => e.open)) await page.locator('.parent-more > summary').click();
+        await page.getByRole('navigation', {name:'Parent sections'}).getByRole('button', {name:section,exact:true}).click();
+        await page.getByText('Retired — create a new link', {exact:true}).first().waitFor();
+        await page.screenshot({path:`${out}/parent-connection-retired-${label}.png`,fullPage:true});
+        page.once('dialog', dialog => dialog.accept());
+        await page.getByRole('button', {name:'Revoke',exact:true}).last().click();
+        await page.getByText('Retired — create a new link', {exact:true}).waitFor({state:'hidden'});
+        await page.unroute('**/api/admin/connections', retiredList);
+
       }
     }
     await page.getByRole('button', {name: 'Done', exact: true}).click();

@@ -43,7 +43,7 @@ data only, preserving the destination family's PIN and identity.
 - PINs: PBKDF2-SHA256, 100,000 iterations, unique per-family salt. Ten failures
   per family per 15 minutes, including PIN changes/deletion. Limits persist in SQL.
 - HMAC-signed `HttpOnly; Secure; SameSite=Lax` parent cookie, 12 hours, bound to
-  the family hash and its session epoch (rotated when PIN changes).
+  a purpose-bound HMAC of the family hash and its session epoch (rotated when PIN changes), never the bare family hash.
 - `RegistryLimits`, named `registry`, stores only salted IP hashes, counts and
   expiry: five creation requests/hour/IP, 200/day global cap; 30 failed family
   lookups/IP/15 minutes. Creation requests count even if validation fails. Expired
@@ -360,3 +360,25 @@ zero external API calls. Real Google login, actual mail delivery and scheduled
 production processing remain unverified until separately authorized provider setup.
 
 For jesklabs.com, Resend must supply the exact domain-verification DNS values: the DKIM TXT record (`resend._domainkey`), the SPF TXT record for its sending/return-path subdomain (typically `send`), and that subdomain’s feedback MX record. Preserve existing root MX/SPF records and use the provider’s displayed region-specific values; do not guess DKIM keys. A DMARC TXT policy at `_dmarc` is recommended. This branch does not create or change DNS.
+
+
+### MCP route security (pending signin branch)
+
+New links use `fpc2_<route>_<64-hex-random>`: route is base64url(12-byte random IV ||
+AES-GCM ciphertext and 16-byte tag), encrypting the internal 64-hex family hash.
+The Web Crypto AES-256 key is HMAC-SHA-256(SESSION_SECRET, "mcp-route-v2").
+Tag failures return 401 before any family object lookup. The DO still authenticates the
+SHA-256 hash of the complete bearer token and enforces scope and revocation.
+
+Legacy `fp_<family-hash>_<random>` links are never accepted: 401 explains that parents
+must create a replacement under Parent → Connect an AI assistant. Existing rows gain
+`format=retired` through an idempotent column migration; they remain visible and revocable,
+and count toward the five-connection cap until revoked. No new DO migration is required.
+Keep SESSION_SECRET stable; rotation invalidates encrypted routes, parent sessions,
+account references and share ownership.
+
+Bare SHA-256(Family Code) is an offline code-verification oracle, not a public identifier.
+Account session/recovery APIs expose purpose-bound HMAC references; PIN cookies also
+HMAC their epoch-derived family binding. Share ownership already uses HMAC, while family
+routing/account storage and numeric-aggregate registry reports retain internal hashes.
+Old PIN cookies require a fresh unlock; clients must refresh account family references.

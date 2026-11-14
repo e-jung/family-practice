@@ -11,7 +11,7 @@ async function mac(payload,secret) {
   return hex(await crypto.subtle.sign('HMAC',key,enc.encode(payload)));
 }
 export async function signSession(secret,familyIdHash) {
-  const payload=`${Date.now()+43200000}.${familyIdHash}`;
+  const payload=`${Date.now()+43200000}.${await mac('parent-family:'+familyIdHash,secret)}`;
   return `${payload}.${await mac(payload,secret)}`;
 }
 export async function isParent(request,env) {
@@ -21,7 +21,7 @@ export async function isParent(request,env) {
   const parts=token.split('.');
   if(parts.length!==3 || !/^\d{13}$/.test(parts[0]) || !/^[a-f0-9]{64}$/.test(parts[1]) || !/^[a-f0-9]{64}$/.test(parts[2])) return false;
   const expiry=Number(parts[0]);
-  if(expiry<=Date.now() || expiry>Date.now()+43200000 || parts[1]!==env.familyIdHash) return false;
+  if(expiry<=Date.now() || expiry>Date.now()+43200000 || !await equalSecret(parts[1],await mac('parent-family:'+env.familyIdHash,env.SESSION_SECRET))) return false;
   return equalSecret(parts[2],await mac(`${parts[0]}.${parts[1]}`,env.SESSION_SECRET));
 }
 export const cookie=(token,maxAge)=>`parent=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;

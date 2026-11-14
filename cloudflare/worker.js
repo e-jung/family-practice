@@ -3,7 +3,7 @@ import {routeAuth,authConfig,accountSession,accountRequest,linkFamily} from './a
 export {AccountStore} from './accounts.js';
 import {shareRequest,validSlug} from './sharing.js';
 export {ShareStore} from './sharing.js';
-import {routeToken} from './mcp.js';
+import {routeToken,decryptRoute,retiredToken,RETIRED_LINK} from './mcp.js';
 import { tts } from './tts.js';
 export { TtsCache } from './tts.js';
 import { createHandler } from './core.js';
@@ -135,16 +135,19 @@ export default {
     if(url.pathname==='/mcp' || url.pathname.startsWith('/mcp/t/')) {
       if(request.headers.has('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin request denied'},403);
       if(request.method!=='POST')return json({error:'Method not allowed'},405,{Allow:'POST'});
-      if(!env.IP_HASH_SALT || env.IP_HASH_SALT.length<32)return json({error:'Service secrets are not configured'},503);
+      if(!env.SESSION_SECRET || env.SESSION_SECRET.length<32 || !env.IP_HASH_SALT || env.IP_HASH_SALT.length<32)return json({error:'Service secrets are not configured'},503);
       const ip=await sha256(env.IP_HASH_SALT+':'+(request.headers.get('CF-Connecting-IP')||'local'));
       const limited=await env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/limit',{method:'POST',body:JSON.stringify({kind:'mcp',ip})}));
       if(!limited.ok)return limited;
+      if(retiredToken(request))return json({error:RETIRED_LINK},401,{'WWW-Authenticate':'Bearer'});
       const token=routeToken(request);
       if(!token)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
-      const headers=new Headers(request.headers);headers.delete('X-Family-Code');headers.delete('Cookie');headers.set('X-Internal-Family-Hash',token[2]);headers.set('X-Internal-Sharing-IP',ip);
+      const familyHash=await decryptRoute(env.SESSION_SECRET,token[2]);
+      if(!familyHash)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
+      const headers=new Headers(request.headers);headers.delete('X-Family-Code');headers.delete('Cookie');headers.set('X-Internal-Family-Hash',familyHash);headers.set('X-Internal-Sharing-IP',ip);
       headers.set('Authorization','Bearer '+token[1]);
       const internal=new URL(request.url);internal.pathname='/mcp';internal.search='';
-      return env.FAMILY.get(env.FAMILY.idFromName('fam:'+token[2])).fetch(new Request(internal,new Request(request,{headers})));
+      return env.FAMILY.get(env.FAMILY.idFromName('fam:'+familyHash)).fetch(new Request(internal,new Request(request,{headers})));
     }
     if(!url.pathname.startsWith('/api/')) {
       const assetURL=new URL(request.url);

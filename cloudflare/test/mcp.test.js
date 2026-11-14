@@ -24,7 +24,7 @@ test('parent connections are bounded, family-bound, hash-only, never exported an
  for(const [path,data] of [['/api/admin/connections',undefined],['/api/admin/connections',{name:'x'}],['/api/admin/connections/revoke',{id:'x'}],['/api/admin/connections/revoke-all',{}]])assert.equal((await f.req(path,data)).status,401);
  await f.req('/api/parent/unlock',{pin:'5678'});
  for(const body of [{},{name:''},{name:'x'.repeat(81)},{name:'x',scope:'admin'},{name:'x',token:'user supplied'}])assert.equal((await f.req('/api/admin/connections',body)).status,400);
- const first=await connection();assert.match(first.token,/^fp_[a-f0-9]{64}_[a-f0-9]{64}$/);
+ const first=await connection();assert.match(first.token,/^fpc2_[A-Za-z0-9_-]{123}_[a-f0-9]{64}$/);
  const stored=f.db.prepare('SELECT * FROM mcp_connections').get();assert.equal(stored.token_hash,await sha256(first.token));assert.equal(Object.values(stored).includes(first.token),false);
  const list=await f.req('/api/admin/connections');assert.deepEqual(list.body.connections,[first.connection]);assert.ok(!JSON.stringify(list.body).includes('token'));
  assert.equal((await f.req('/api/admin/export')).body.mcp_connections,undefined);
@@ -181,4 +181,54 @@ test('pre-authentication limits bound unknown-token DO dispatch by IP and global
  assert.equal((await raw('fp_'+'c'.repeat(64)+'_'+'d'.repeat(64),{jsonrpc:'2.0',id:1,method:'ping'})).status,429);
  assert.equal(f.databases.size,before);
  registry.prepare('UPDATE limits SET until=0').run();assert.equal((await raw('bad',{jsonrpc:'2.0',id:1,method:'ping'})).status,401);
+});
+
+test('encrypted routes authenticate, hide family hashes and cannot switch families',async t=>{
+ const {f,connection,rpc}=await setup(t);
+ const {encryptRoute,decryptRoute,routeToken,RETIRED_LINK}=await import('../mcp.js');
+ const hash=await sha256(f.getCode()),a=await connection('read-only');
+ const route=routeToken(new Request('https://family.example/mcp/t/'+a.token))[2];
+ assert.equal(await decryptRoute(f.env.SESSION_SECRET,route),hash);
+ assert.notEqual(await encryptRoute(f.env.SESSION_SECRET,hash),route);
+ assert.equal(await decryptRoute('wrong-secret-32-characters-minimum-long',route),null);
+ const tampered=(route[0]==='A'?'B':'A')+route.slice(1);
+ const originalGet=f.env.FAMILY.get;let dispatches=0;
+ f.env.FAMILY.get=(...args)=>{dispatches++;return originalGet(...args);};
+ for(const offset of [0,30,121]){
+  const changed=route.slice(0,offset)+(route[offset]==='A'?'B':'A')+route.slice(offset+1);
+  assert.equal((await rpc(a.token.replace(route,changed),'ping')).status,401);
+ }
+ assert.equal(dispatches,0,'bad IV/ciphertext/tag must not dispatch to a family');
+ f.env.FAMILY.get=originalGet;
+ assert.equal(await decryptRoute(f.env.SESSION_SECRET,tampered),null);
+ const old='fp_'+hash+'_'+'a'.repeat(64);
+ const retired=await rpc(old,'ping');assert.equal(retired.status,401);assert.equal(retired.body.error,RETIRED_LINK);
+ const urlResponse=await worker.fetch(new Request('https://family.example/mcp/t/'+old,{method:'POST'}),f.env);
+ assert.equal(urlResponse.status,401);assert.equal((await urlResponse.json()).error,RETIRED_LINK);
+ await f.req('/api/families',{name:'Other',pin:'5678'});
+ const b=await connection(),routeB=routeToken(new Request('https://family.example/mcp/t/'+b.token))[2];
+ assert.notEqual(await decryptRoute(f.env.SESSION_SECRET,routeB),hash);
+ assert.equal((await rpc(a.token.replace(route,routeB),'ping')).status,401);
+ assert.equal((await rpc(a.token,'tools/call',{name:'add_verse',arguments:{kid:1,reference:'Test',text:'No'}})).body.result.isError,true);
+ assert.equal((await rpc(a.token,'ping')).status,200);
+ for(const response of [await rpc(a.token,'tools/list'),await rpc(a.token,'ping'),await f.req('/api/admin/connections')]){
+  assert.ok(!JSON.stringify(response.body).includes(hash));
+  assert.ok(!JSON.stringify([...response.headers]).includes(hash));
+ }
+ assert.ok(!a.token.includes(hash));assert.ok(!atob(route.replaceAll('-','+').replaceAll('_','/')+'=').includes(hash));
+});
+
+test('legacy connection schema migrates idempotently and retired rows remain revocable',async t=>{
+ const {DatabaseSync}=await import('node:sqlite');
+ const {initConnections}=await import('../mcp.js');
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());
+ const sql={exec(q,...args){if(!args.length&&q.includes(';')){db.exec(q);return [];}const stmt=db.prepare(q);if(stmt.columns().length)return stmt.all(...args);stmt.run(...args);return [];}};
+ db.exec('CREATE TABLE mcp_connections(id TEXT PRIMARY KEY,token_hash TEXT NOT NULL UNIQUE,name TEXT NOT NULL,scope TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT)');
+ db.prepare('INSERT INTO mcp_connections VALUES(?,?,?,?,?,?)').run('old','hash','Old link','read-only','2026-11-14',null);
+ initConnections(sql);initConnections(sql);
+ assert.equal(db.prepare('SELECT format FROM mcp_connections').get().format,'retired');
+ const {f}=await setup(t);
+ f.db.prepare('INSERT INTO mcp_connections(id,token_hash,name,scope,created_at) VALUES(?,?,?,?,?)').run('old','hash','Old link','read-only','2026-11-14');
+ assert.equal((await f.req('/api/admin/connections')).body.connections[0].format,'retired');
+ assert.equal((await f.req('/api/admin/connections/revoke',{id:'old'})).status,200);
 });

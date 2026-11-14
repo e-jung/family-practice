@@ -31,16 +31,44 @@ function valid(value,s) {
  if(s.type==='string')return typeof value==='string'&&value.length<=(s.maxLength??Infinity)&&value.trim().length>=(s.minLength??0)&&(!s.format||(/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value));
  return false;
 }
+const enc=new TextEncoder();
+export const RETIRED_LINK='This connection link format was retired; create a new connection in Parent → Connect an AI assistant';
+async function routeKey(secret) {
+ if(typeof secret!=='string'||secret.length<32)throw Error('Service secrets are not configured');
+ const material=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const derived=await crypto.subtle.sign('HMAC',material,enc.encode('mcp-route-v2'));
+ return crypto.subtle.importKey('raw',derived,'AES-GCM',false,['encrypt','decrypt']);
+}
+export async function encryptRoute(secret,familyHash) {
+ if(!/^[a-f0-9]{64}$/.test(familyHash))throw Error('Invalid family route');
+ const iv=crypto.getRandomValues(new Uint8Array(12));
+ const encrypted=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await routeKey(secret),enc.encode(familyHash)));
+ return btoa(String.fromCharCode(...iv,...encrypted)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
+}
+export async function decryptRoute(secret,route) {
+ try {
+  if(!/^[A-Za-z0-9_-]{123}$/.test(route))return null;
+  const bytes=Uint8Array.from(atob(route.replaceAll('-','+').replaceAll('_','/')+'='),c=>c.charCodeAt(0));
+  if(btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')!==route)return null;
+  const hash=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.slice(0,12)},await routeKey(secret),bytes.slice(12)));
+  return /^[a-f0-9]{64}$/.test(hash)?hash:null;
+ }catch{return null;}
+}
+export function retiredToken(request) {
+ const link=new URL(request.url).pathname.startsWith('/mcp/t/')?new URL(request.url).pathname.slice(7):null;
+ return /^fp_[a-f0-9]{64}_[a-f0-9]{64}$/.test(link??(request.headers.get('Authorization')||'').replace(/^Bearer /,''));
+}
 export function initConnections(sql) {
  sql.exec('CREATE TABLE IF NOT EXISTS mcp_connections(id TEXT PRIMARY KEY,token_hash TEXT NOT NULL UNIQUE,name TEXT NOT NULL,scope TEXT NOT NULL,created_at TEXT NOT NULL,last_used_at TEXT); CREATE TABLE IF NOT EXISTS mcp_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL)');
+ if(![...sql.exec('PRAGMA table_info(mcp_connections)')].some(c=>c.name==='format'))sql.exec("ALTER TABLE mcp_connections ADD COLUMN format TEXT NOT NULL DEFAULT 'retired'");
 }
-export const connectionFields='id,name,scope,created_at,last_used_at';
-export async function createConnection(sql,familyHash,b) {
+export const connectionFields='id,name,scope,created_at,last_used_at,format';
+export async function createConnection(sql,familyHash,b,secret) {
  if(!b||Object.keys(b).some(k=>!['name','scope'].includes(k))||typeof b.name!=='string'||!b.name.trim()||b.name.length>80||!['add-read','read-only'].includes(b.scope??'add-read'))throw Object.assign(Error('Use a name (1–80 characters) and add-read or read-only scope'),{status:400});
  if([...sql.exec('SELECT COUNT(*) n FROM mcp_connections')][0].n>=5)throw Object.assign(Error('Maximum 5 connections; revoke one first'),{status:400});
  const random=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
- const token=`fp_${familyHash}_${random}`,connection={id:crypto.randomUUID(),name:b.name.trim(),scope:b.scope??'add-read',created_at:new Date().toISOString(),last_used_at:null};
- sql.exec('INSERT INTO mcp_connections VALUES(?,?,?,?,?,?)',connection.id,await sha256(token),connection.name,connection.scope,connection.created_at,null);
+ const token=`fpc2_${await encryptRoute(secret,familyHash)}_${random}`,connection={id:crypto.randomUUID(),name:b.name.trim(),scope:b.scope??'add-read',created_at:new Date().toISOString(),last_used_at:null,format:'fpc2'};
+ sql.exec('INSERT INTO mcp_connections(id,token_hash,name,scope,created_at,last_used_at,format) VALUES(?,?,?,?,?,?,?)',connection.id,await sha256(token),connection.name,connection.scope,connection.created_at,null,connection.format);
  return {connection,token};
 }
 export function routeToken(request) {
@@ -49,12 +77,13 @@ export function routeToken(request) {
  const authorization=request.headers.get('Authorization');
  // Never let a conflicting header silently switch a connection URL's identity.
  if(link!==null && authorization && authorization!=='Bearer '+link)return null;
- return /^Bearer (fp_([a-f0-9]{64})_[a-f0-9]{64})$/.exec(link===null?authorization||'':'Bearer '+link);
+ return /^Bearer (fpc2_([A-Za-z0-9_-]{123})_[a-f0-9]{64})$/.exec(link===null?authorization||'':'Bearer '+link);
 }
 export async function handleMcp(request,sql,run) {
  const url=new URL(request.url);
  if(request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)return json({error:'Cross-origin request denied'},403);
  if(request.method!=='POST')return json({error:'Method not allowed'},405,{Allow:'POST'});
+ if(retiredToken(request))return json({error:RETIRED_LINK},401);
  const token=routeToken(request);
  const connection=token&&[...sql.exec('SELECT * FROM mcp_connections WHERE token_hash=?',await sha256(token[1]))][0];
  if(!connection)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});

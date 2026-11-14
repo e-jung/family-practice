@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import worker,{FamilyDatabase,RegistryLimits} from './worker.js';
-import {AccountStore,routeAuth,hmac,signedValue,readValue,normalizeEmail,generateLoginCode} from './accounts.js';
+import {AccountStore,routeAuth,hmac,signedValue,readValue,normalizeEmail,generateLoginCode,familyRef} from './accounts.js';
 import {sha256,generateFamilyCode} from './auth.js';
 
 // Real SQLite and real DO handlers; only the platform namespace/cursor is adapted.
@@ -90,7 +90,7 @@ test('cross-family recovery, account parent access and unlink isolation',async t
   const b=await f.create('B');f.jar.delete('parent');
   assert.equal((await f.req('/api/admin/export')).status,200);
   const recovered=(await f.req('/api/auth/recover')).body.families;assert.equal(recovered.length,2);
-  const ah=await sha256(a),bh=await sha256(b);assert.equal((await f.req('/api/auth/open',{hash:ah})).body.code,a);
+  const ah=await familyRef(f.env,await sha256(a)),bh=await familyRef(f.env,await sha256(b));assert.equal((await f.req('/api/auth/open',{hash:ah})).body.code,a);
   assert.equal((await f.req('/api/auth/open',{hash:'unlinked'})).status,403);
   const hash=await sha256('parent@example.com');await f.req('/api/auth/unlink',{familyCode:b,parentHash:hash});
   assert.equal((await f.req('/api/admin/export')).status,401);
@@ -203,4 +203,28 @@ test('family deletion removes identity links and still requires the fresh PIN',a
  assert.equal((await f.req('/api/admin/delete-family',{pin:'0000',confirmation:'B'})).status,401);
  assert.equal((await f.req('/api/admin/delete-family',{pin:'1234',confirmation:'B'})).status,200);
  const families=(await f.req('/api/auth/recover')).body.families;assert.deepEqual(families.map(x=>x.code),[a]);
+});
+
+test('family identifiers never leave public responses, decoded cookies or account references as bare SHA256',async t=>{
+ const f=fixture(t),code=await f.create(),hash=await sha256(code);
+ const inspect=r=>{
+  const wire=JSON.stringify({body:r.body,headers:[...r.headers]});
+  assert.ok(!wire.includes(hash),wire);
+  for(const c of r.headers.getSetCookie()){
+   const value=c.split(';')[0].split('=').slice(1).join('=');
+   const payload=value.split('.')[0];
+   try{assert.ok(!atob(payload.replaceAll('-','+').replaceAll('_','/')).includes(hash));}catch(e){if(e.code==='ERR_ASSERTION')throw e;}
+  }
+  return r;
+ };
+ inspect(await f.req('/api/parent/unlock',{pin:'1234'}));
+ await f.login('privacy@example.com',code);
+ for(const path of ['/api/auth/session','/api/auth/recover','/api/state','/api/admin/export','/api/admin/connections','/api/auth/parents'])inspect(await f.req(path));
+ const session=inspect(await f.req('/api/auth/session')),ref=session.body.families[0].hash;
+ assert.notEqual(ref,hash);assert.equal(ref,await familyRef(f.env,hash));
+ assert.equal((await f.req('/api/auth/open',{hash})).status,403);
+ inspect(await f.req('/api/auth/open',{hash:ref}));
+ inspect(await f.req('/api/admin/connections',{name:'Private link',scope:'read-only'}));
+ f.env.GOOGLE_CLIENT_ID='local-client';f.env.GOOGLE_CLIENT_SECRET='local-secret';
+ inspect(await f.req('/auth/google/start?familyCode='+code));
 });
