@@ -7,10 +7,10 @@ covered by the same `node --test` suite; it is not the public deployment.
 ## Product and privacy
 
 Anyone can create an empty family space with an optional display name and a
-4–8 digit Parent PIN. Parent identity is optional: Google or an emailed code can
+4–8 digit Parent PIN. No accounts required. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. Google or an emailed code through shared Accounts can
 link families for recovery; kids never need accounts. No passwords, analytics, ads,
-external fonts, CDNs or third-party browser requests during practice. Google sign-in
-is an explicit parent redirect; Resend delivery happens server-side when configured. Speech defaults to Cloudflare Workers AI
+external fonts, CDNs or third-party browser requests during practice. Jesklabs sign-in
+is an explicit parent redirect (including Google when chosen); this app’s Resend delivery is server-side and only for opted-in notifications. Speech defaults to Cloudflare Workers AI
 (Aura-1 asteria), with a device `speechSynthesis` option and automatic fallback. Only
 text read aloud is sent for synthesis, not profile names or typed answers.
 Use first names or nicknames, not full names.
@@ -184,9 +184,10 @@ build. Before a future authorized deployment, provide:
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
 | `IP_HASH_SALT` | Independent stable random secret, at least 32 characters |
 | `OPS_TOKEN` | Optional independent bearer secret for aggregate operator stats |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google OAuth web client; both required |
-| `RESEND_API_KEY` | Optional Resend API key for sign-in codes and opted-in mail |
-| `APP_ORIGIN` | Canonical HTTPS app origin used for email links; default `https://spelling.jesklabs.com`; self-hosters must override |
+| `ACCOUNTS_SVC` | Optional Worker service binding to shared Accounts; required when enabling sign-in |
+| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment switches (`1` to enable); map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`, default `0` |
+| `RESEND_API_KEY` | Optional Resend API key for opted-in notifications only |
+| `APP_ORIGIN` | Canonical HTTPS app origin used for notification links and auth callbacks; default `https://spelling.jesklabs.com`; self-hosters must override |
 | `EMAIL_FROM` | Sender var; default `Family Practice <spelling@jesklabs.com>`; use your verified domain |
 
 **`PARENT_PIN` is not used or required.** Each parent chooses their own PIN.
@@ -197,7 +198,7 @@ The script does not read `.env` or persist credentials and never logs secrets.
 
 When deployment is authorized, run `node cloudflare/deploy.mjs` with those four
 variables already set securely. This immediately uploads/deploys the Worker and
-assets, then writes **SESSION_SECRET and IP_HASH_SALT**, plus **OPS_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and RESEND_API_KEY only when supplied**, as Worker secrets. `EMAIL_FROM` and `APP_ORIGIN` are plain-text vars (not secrets). Set APP_ORIGIN to your canonical HTTPS app origin. Omitted optional secrets preserve existing values, not disable a provider; remove a Worker secret explicitly to disable it. The uploader then PUTs the hourly schedule to `/workers/scripts/family-practice/schedules` with `[{"cron":"0 * * * *"}]`; this replaces that Worker’s cron list. Omitting OPS_TOKEN logs a warning and preserves any existing deployed token; a fresh deployment without it has no ops endpoint.
+assets, then writes **SESSION_SECRET and IP_HASH_SALT**, plus **OPS_TOKEN and RESEND_API_KEY only when supplied**, as Worker secrets. `EMAIL_FROM`, `APP_ORIGIN` are plain-text vars (not secrets). Deployer `FP_SIGNIN_EMAIL` / `FP_SIGNIN_GOOGLE` map to plain-text Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE` (default `0`). Set APP_ORIGIN to your canonical HTTPS app origin. Omitted optional secrets preserve existing values, not disable a provider; disable sign-in with its feature vars; remove notification credentials explicitly to disable notification delivery. The uploader then PUTs the hourly schedule to `/workers/scripts/family-practice/schedules` with `[{"cron":"0 * * * *"}]`; this replaces that Worker’s cron list. Omitting OPS_TOKEN logs a warning and preserves any existing deployed token; a fresh deployment without it has no ops endpoint.
 It does not provision subscriptions, routes, DNS, custom hostnames, workers.dev,
 preview URLs, or Access policies. For this public product **Cloudflare Access is
 not required and must not gate the app**; independently enable/configure the
@@ -210,7 +211,7 @@ are deliberate defaults, not proof of any live public address.
 - ES modules `cloudflare/{worker,core,mcp,auth,tts,sharing,accounts,emails,notifications}.js`
   and `lib/practice.js`, preserving relative imports without bundling/rewriting.
 - Bindings FAMILY → FamilyDatabase, REGISTRY → RegistryLimits, TTS_CACHE → TtsCache,
-  SHARES → ShareStore, ACCOUNTS → AccountStore, ASSETS → assets, AI → Workers AI.
+  SHARES → ShareStore, ACCOUNTS → AccountStore, ASSETS → assets, AI → Workers AI; optional ACCOUNTS_SVC → shared Accounts Worker service.
 - Preserve deployed migrations v1 FamilyDatabase/RegistryLimits, v2 TtsCache and
   v3 ShareStore unchanged. Add v4 `new_sqlite_classes: ["AccountStore"]`.
   First deployment sends all four steps; live v1/v2/v3 applies only subsequent
@@ -311,30 +312,18 @@ before session completion. Learn attempts remain visible in parent attempt histo
 words and completed-test-list counts; they count toward practice streaks. Old backups default absent mode/
 step to test/0; invalid imported mode/step values are rejected.
 
-## Optional parent accounts and email (signin branch, not yet deployed)
+## Optional shared Jesklabs Accounts and notifications (pending cutover)
 
-Code/PIN-only families remain fully usable with all provider secrets unset.
-Google: create an OAuth **Web application** client, configure its consent screen
-and exact redirect URI `https://<your-host>/auth/google/callback`, then provide
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Only verified parent email is used;
-no child accounts or Google contacts access. Hosted OAuth must use HTTPS. A Google
-client in testing mode may restrict sign-in to its configured test users.
+Code/PIN-only families remain fully usable without an account. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use.
 
-Resend: verify a sender domain (provider DNS requirements), create a send-capable
-API key, configure `RESEND_API_KEY`, and set `EMAIL_FROM` to that verified sender.
-The checked-in default belongs to the original hosted instance; self-hosters must
-replace it. Free-tier/provider quotas and deliverability are independent of the
-app's own bounded global mail budget. Do not purchase a plan automatically.
-Without Resend, emailed sign-in and delivery are disabled; Google may still work.
-Without Google, emailed sign-in may still work. Neither is required for kid practice.
+Identity belongs to the separate Accounts service at `https://accounts.jesklabs.com`.
+Configure `ACCOUNTS_SVC` as a Worker service binding to `jesklabs-accounts`, entrypoint `SpellingClient`. For the uploader, explicitly set `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1`; these become Worker vars `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`. For Wrangler set those Worker vars directly. All default to `0`; SSO is available when either provider is enabled. The registered production callback is exactly `https://spelling.jesklabs.com/auth/jesklabs/callback`; only localhost development uses the request origin. Self-hosters must adapt the app callback constant and arrange a compatible shared service/client registration or leave sign-in off. Do not configure a Google client or Resend authentication key in Family Practice: Accounts owns Google OAuth, email codes and shared SSO. The app’s `/api/auth/config` returns `{email,google,sso}` availability.
 
-Identity persistence is in the singleton AccountStore; links hold recoverable
-family access and must be treated as private account data. Parent notifications
-are opt-in, distinct from requested sign-in codes. Account/family deletion and
-unlink must clean up associations. Digest content is aggregate kid progress
-only—never raw answers, codes/PINs, or full word/verse lists. Messages include
-List-Unsubscribe plus One-Click headers; the account route verifies a signed
-unsubscribe token and suppresses future optional emails. No tracking pixels.
+`POST /api/auth/start` accepts `{mode:'google'|'sso',familyCode?}` and returns `{url}` with a flow cookie. Family codes travel only in JSON, never redirect queries. `GET /auth/jesklabs/start?mode=google|sso` supports a code-free entry. Callback redirects to `/?auth=confirm|signin|error`. Sign-in entry tries SSO first; `confirm` fetches the masked pending email and asks explicitly before `POST /api/auth/confirm` creates a local session. Choosing a different account calls `/api/auth/decline` and opens the regular Google/email sheet. Successful email verification returns `{ok:true,attachUrl}` and the browser immediately follows it to attach shared SSO. Normal signout clears only app cookies. The separate “Sign out of all Jesklabs apps on this device” option clears app cookies before navigating to `https://accounts.jesklabs.com/sso/logout?client=spelling&return=/`.
+
+The singleton AccountStore keys identity by stable shared Accounts subject, not email; email is mutable profile/delivery data. Links hold recoverable family access and remain private app-local data. Deleting this app’s sign-in removes its associations/preferences and calls Accounts `deleteLink`; Accounts retains other app links, deleting its shared user only when none remain. Unlink and family deletion clean up local associations.
+
+Resend here is **only for opted-in notifications**, independent of shared sign-in. Verify a sender domain, configure `RESEND_API_KEY`, and set `EMAIL_FROM` to the verified sender; self-hosters must replace the hosted default. No Resend means no notification delivery, not disabled shared authentication. Provider quotas/deliverability are independent of the app’s bounded mail budget; never purchase a plan automatically. Digest content is aggregate kid progress only—never raw answers, codes/PINs, or full word/verse lists. Signed List-Unsubscribe/One-Click handling suppresses optional emails only. No tracking pixels.
 
 Hourly cron is UTC, but preference matching uses the parent's IANA timezone.
 `selectForHour(prefs, now, kind)` returns a boolean and **does not** reserve a send.
@@ -350,13 +339,23 @@ fall-back DST hour must not resend; a nonexistent spring-forward hour is skipped
 There are no automatic retries, including timeouts/429/5xx; ambiguous network
 failures may already have delivered and must not be blindly resent.
 
+### Disposable local sign-in smoke
+
+Use two local Wrangler terminals (no provider credentials or network calls):
+
+```sh
+WRANGLER_SEND_METRICS=false wrangler dev -c cloudflare/local-accounts/wrangler.toml --local --port 8793 --persist-to /tmp/fp-accounts-local
+WRANGLER_SEND_METRICS=false wrangler dev -c cloudflare/wrangler.signin-local.toml --local --port 8792 --persist-to /tmp/fp-app-local
+```
+
+Both configs are dev/test only; never deploy them. Use fresh disposable state when rerunning creation-quota tests. The fake exports only SpellingClient, validates localhost callbacks and PKCE, and provides deterministic local email codes instead of sending mail. The app allows `ACCOUNTS_ORIGIN` only with `ACCOUNTS_DEV=1` and a loopback request **and** target; production always navigates to Accounts. Run `node cloudflare/signin-smoke.mjs` and `node cloudflare/signin-ui-smoke.mjs`, with `PLAYWRIGHT_MODULE` and `CHROMIUM_PATH` pointing at your optional local browser tools. The browser smoke covers desktop and 390×844, email, Google, SSO consent/decline, family links, recovery, unlink and deletion; it blocks unexpected external requests.
+
 For offline/local-only email tests, set `EMAIL_TEST_SINK=1` only on disposable
 loopback Wrangler. The delivery helper additionally requires `APP_ORIGIN` to be
 loopback (set `--var APP_ORIGIN:http://localhost:8792` for scheduled local tests). It returns
-`{sent:true,test:true,message}` without provider access. AccountStore stores the last message per address for local
-sink retrieval; never expose sink APIs on production. Never set
+`{sent:true,test:true,message}` without provider access. The local sink supports notification verification only; shared authentication needs its own disposable Accounts fixture. Never expose sink APIs on production. Never set
 this flag in deploy configuration. Mocked-fetch tests and uploader dry-run make
-zero external API calls. Real Google login, actual mail delivery and scheduled
+zero external API calls. Real shared Accounts/Google login, shared SSO logout, actual mail delivery and scheduled
 production processing remain unverified until separately authorized provider setup.
 
 For jesklabs.com, Resend must supply the exact domain-verification DNS values: the DKIM TXT record (`resend._domainkey`), the SPF TXT record for its sending/return-path subdomain (typically `send`), and that subdomain’s feedback MX record. Preserve existing root MX/SPF records and use the provider’s displayed region-specific values; do not guess DKIM keys. A DMARC TXT policy at `_dmarc` is recommended. This branch does not create or change DNS.
@@ -382,3 +381,5 @@ Account session/recovery APIs expose purpose-bound HMAC references; PIN cookies 
 HMAC their epoch-derived family binding. Share ownership already uses HMAC, while family
 routing/account storage and numeric-aggregate registry reports retain internal hashes.
 Old PIN cookies require a fresh unlock; clients must refresh account family references.
+
+Accounts ops adds `accounts: {parents: <numeric count>, service: "ok"|"error"|"unbound"}`. Health checks call only SpellingClient `getUser` with a nonexistent probe subject and expect null. No identities appear in stats.

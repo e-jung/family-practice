@@ -58,7 +58,14 @@ class_name = "AccountStore"
 tag = "v4"
 new_sqlite_classes = ["AccountStore"]
 
+[[services]]
+binding = "ACCOUNTS_SVC"
+service = "jesklabs-accounts"
+entrypoint = "SpellingClient"
+
 [vars]
+SIGNIN_EMAIL = "0"
+SIGNIN_GOOGLE = "0"
 APP_ORIGIN = "https://spelling.jesklabs.com"
 EMAIL_FROM = "Family Practice <spelling@jesklabs.com>"
 

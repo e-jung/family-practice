@@ -9,7 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
 export const SCRIPT = 'family-practice';
 export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'cloudflare/sharing.js', 'cloudflare/accounts.js', 'cloudflare/emails.js', 'cloudflare/notifications.js', 'lib/practice.js'];
-export const OPTIONAL_SECRETS = ['OPS_TOKEN', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'RESEND_API_KEY'];
+export const OPTIONAL_SECRETS = ['OPS_TOKEN', 'RESEND_API_KEY'];
 export const EMAIL_FROM = 'Family Practice <spelling@jesklabs.com>';
 export const SCHEDULES = [{ cron: '0 * * * *' }];
 const MIME = {
@@ -69,6 +69,9 @@ export function metadataFor(plan, jwt, migrationTag, env = {}) {
       { name: 'TTS_CACHE', type: 'durable_object_namespace', class_name: 'TtsCache' },
       { name: 'SHARES', type: 'durable_object_namespace', class_name: 'ShareStore' },
       { name: 'ACCOUNTS', type: 'durable_object_namespace', class_name: 'AccountStore' },
+      {type:'service',name:'ACCOUNTS_SVC',service:'jesklabs-accounts',entrypoint:'SpellingClient'},
+      {name:'SIGNIN_EMAIL',type:'plain_text',text:env.FP_SIGNIN_EMAIL==='1'?'1':'0'},
+      {name:'SIGNIN_GOOGLE',type:'plain_text',text:env.FP_SIGNIN_GOOGLE==='1'?'1':'0'},
       { name: 'EMAIL_FROM', type: 'plain_text', text: env.EMAIL_FROM || EMAIL_FROM },
       { name: 'APP_ORIGIN', type: 'plain_text', text: env.APP_ORIGIN || 'https://spelling.jesklabs.com' },
       { name: 'ASSETS', type: 'assets' },

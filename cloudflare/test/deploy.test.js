@@ -27,11 +27,14 @@ try {
   assert.deepEqual(dryRun.metadata_if_live_v2.migrations, {old_tag:'v2',new_tag:'v4',steps:[{new_sqlite_classes:['ShareStore']},{new_sqlite_classes:['AccountStore']}]});
   assert.deepEqual(dryRun.metadata_if_live_v3.migrations, {old_tag:'v3',new_tag:'v4',steps:[{new_sqlite_classes:['AccountStore']}]});
   assert.equal(dryRun.metadata_if_live_v4.migrations, undefined);
+  assert.deepEqual(dryRun.metadata_if_live_v4.bindings.find(b=>b.name==='ACCOUNTS_SVC'),{type:'service',name:'ACCOUNTS_SVC',service:'jesklabs-accounts',entrypoint:'SpellingClient'});
+  for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name===name).text,'0');
+  const enabled=metadataFor(plan,'jwt','v4',{FP_SIGNIN_EMAIL:'1',FP_SIGNIN_GOOGLE:'1'});for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(enabled.bindings.find(b=>b.name===name).text,'1');
   assert.deepEqual(dryRun.schedules, [{cron:'0 * * * *'}]);
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/accounts.js'));
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/emails.js'));
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/notifications.js'));
-  assert.deepEqual(dryRun.optional_secrets, ['OPS_TOKEN','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','RESEND_API_KEY']);
+  assert.deepEqual(dryRun.optional_secrets, ['OPS_TOKEN','RESEND_API_KEY']);
   assert.ok(dryRun.metadata_if_first_deployment.bindings.some(b=>b.type==='ai' && b.name==='AI'));
   const env = { CF_API_TOKEN: 'private-api-token', CF_ACCOUNT_ID: 'a'.repeat(32), IP_HASH_SALT: 'i'.repeat(64), SESSION_SECRET: 's'.repeat(64) };
   const response = (result, status=200) => new Response(JSON.stringify({ success: true, result }), { status });

@@ -1,0 +1,76 @@
+# LOCAL SMOKE ONLY — never deploy this config.
+name = "family-practice-signin-local"
+send_metrics = false
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+run_worker_first = true
+
+[[durable_objects.bindings]]
+name = "FAMILY"
+class_name = "FamilyDatabase"
+
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "RegistryLimits"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["FamilyDatabase", "RegistryLimits"]
+
+[[durable_objects.bindings]]
+name = "TTS_CACHE"
+class_name = "TtsCache"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["TtsCache"]
+
+[[durable_objects.bindings]]
+name = "SHARES"
+class_name = "ShareStore"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["ShareStore"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+# Connection URLs contain bearer credentials; never record invocation URLs.
+[observability.logs]
+enabled = true
+invocation_logs = false
+
+[[durable_objects.bindings]]
+name = "ACCOUNTS"
+class_name = "AccountStore"
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["AccountStore"]
+
+[vars]
+APP_ORIGIN = "http://localhost:8792"
+SIGNIN_EMAIL = "1"
+SIGNIN_GOOGLE = "1"
+ACCOUNTS_DEV = "1"
+ACCOUNTS_ORIGIN = "http://localhost:8793"
+SESSION_SECRET = "disposable-local-session-secret-32-characters"
+IP_HASH_SALT = "disposable-local-ip-salt-32-characters"
+EMAIL_FROM = "Family Practice <spelling@jesklabs.com>"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[services]]
+binding = "ACCOUNTS_SVC"
+service = "family-practice-fake-accounts"
+entrypoint = "SpellingClient"

@@ -1,5 +1,5 @@
 import {scheduledEmails} from './notifications.js';
-import {routeAuth,authConfig,accountSession,accountRequest,linkFamily} from './accounts.js';
+import {routeAuth,authConfig,accountSession,accountRequest,linkFamily,accountsRpc} from './accounts.js';
 export {AccountStore} from './accounts.js';
 import {shareRequest,validSlug} from './sharing.js';
 export {ShareStore} from './sharing.js';
@@ -171,9 +171,10 @@ export default {
       const supplied=request.headers.get('Authorization')||'';
       if(!await equalSecret(supplied,'Bearer '+env.OPS_TOKEN)) return json({error:'Unauthorized'},401);
       const response=await env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/stats'));
-      if(!env.SHARES || !response.ok)return response;
+      if(!response.ok)return response;
       const stats=await response.json();
-      stats.sharing=await shareRequest(env,'/stats',{});if(env.ACCOUNTS)stats.email=await accountRequest(env,'/stats');
+      if(env.SHARES)stats.sharing=await shareRequest(env,'/stats',{});if(env.ACCOUNTS)stats.email=await accountRequest(env,'/stats');
+      let service='unbound';if(env.ACCOUNTS_SVC)try{service=await accountsRpc(env,'getUser',{sub:'jl1_probe_nonexistent'})===null?'ok':'error';}catch{service='error';}stats.accounts={parents:stats.email?.parents||0,service};
       return json(stats);
     }
     if(!env.SESSION_SECRET || env.SESSION_SECRET.length<32 || !env.IP_HASH_SALT || env.IP_HASH_SALT.length<32) return json({error:'Service secrets are not configured'},503);

@@ -1,0 +1,20 @@
+# LOCAL TEST DOUBLE ONLY — do not deploy.
+name = "family-practice-fake-accounts"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+send_metrics = false
+[dev]
+ip = "127.0.0.1"
+port = 8793
+[vars]
+ENVIRONMENT = "dev"
+APP_ORIGIN = "http://localhost:8792"
+GOOGLE_EMAIL = "google-local@example.com"
+[[durable_objects.bindings]]
+name = "FAKE"
+class_name = "FakeAccounts"
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["FakeAccounts"]

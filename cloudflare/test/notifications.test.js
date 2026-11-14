@@ -38,3 +38,5 @@ test('review nudges only Tuesday and Friday local time, replay safe, never retry
 });
 
 test('multi-family summaries cover all fifty possible children',()=>{const result=buildWeeklyDigest({kids:Array.from({length:50},(_,i)=>({name:'Kid '+i,dueWords:i}))});for(let i=0;i<50;i++)assert.ok(result.text.includes('Kid '+i+':'));});
+
+test('Google-only identities with null email skip all opt-in mail',async()=>{const f=fixture();f.account.email=null;await scheduledEmails(f.env,new Date('2026-11-16T01:00:00Z'),()=>{throw Error('No provider requests');});assert.equal(f.messages.length,0);assert.ok(!f.calls.includes('/mail-reserve'));});

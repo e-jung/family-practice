@@ -23,7 +23,7 @@ Help a family keep a small daily habit: weekly spelling tests read aloud (word â
 
 ## Positioning
 
-Built by a parent for his own kids and shared free (MIT). No ads or analytics: a Family Code opens practice, a Parent PIN protects edits. Optional Google or emailed-code parent sign-in links families for recovery and explicitly opted-in practice emails; kids never need an account. Parents paste their own verse wording, so there is no translation licensing and no public content feed. Optional private-by-link snapshots and single-admin weekly class lists let families exchange practice without rosters or child accounts.
+Built by a parent for his own kids and shared free (MIT). No ads or analytics: a Family Code opens practice, a Parent PIN protects edits. No accounts required. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. Google or emailed-code parent sign-in through that shared service links families for recovery and explicitly opted-in practice emails; kids never need an account. Parents paste their own verse wording, so there is no translation licensing and no public content feed. Optional private-by-link snapshots and single-admin weekly class lists let families exchange practice without rosters or child accounts.
 
 ## Operating Context
 
@@ -34,8 +34,8 @@ Built by a parent for his own kids and shared free (MIT). No ads or analytics: a
 
 ## Capabilities and Constraints
 
-- Vanilla JS, no build step, zero npm runtime dependencies; strict CSP (`script-src 'self'`, no third-party requests in kid practice, no external fonts; optional parent Google sign-in uses an explicit redirect).
-- Collect only child first names/nicknames and optional grade labels; verified parent email is optional for account features. Parent-managed family use only; class lists are single-admin publishing feeds, never school accounts or rosters.
+- Vanilla JS, no build step, zero npm runtime dependencies; strict CSP (`script-src 'self'`, no third-party requests in kid practice, no external fonts; optional parent Jesklabs sign-in uses explicit redirects; shared SSO always asks for confirmation before opening this app).
+- Collect only child first names/nicknames and optional grade labels; verified parent email is optional for account features; app identity is keyed by a stable shared Accounts subject, never by mutable email. Parent-managed family use only; class lists are single-admin publishing feeds, never school accounts or rosters.
 - Speech: cloud voice with device-voice fallback; sounds must never play before a user gesture.
 - Practice data loads and saves online only; the PWA caches the public shell only.
 - Limits per family are bounded (10 kids, 200 lists, 300 verses, etc.).

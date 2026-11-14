@@ -14,7 +14,7 @@ test('deployer writes optional provider secrets only if supplied and warns on om
       else if(path.endsWith('/secrets')) { const secret=JSON.parse(options.body);secrets.push(secret); }
       return Response.json({success:true,result});
     }});
-    assert.deepEqual(secrets.map(s=>s.name),['SESSION_SECRET','IP_HASH_SALT',...(enabled?['OPS_TOKEN','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','RESEND_API_KEY']:[])]);
+    assert.deepEqual(secrets.map(s=>s.name),['SESSION_SECRET','IP_HASH_SALT',...(enabled?['OPS_TOKEN','RESEND_API_KEY']:[])]);
     assert.equal(logs.some(x=>x.includes('Warning: OPS_TOKEN')),!enabled);
     assert.ok(!logs.join('\n').includes('private-ops-token'));
     if(enabled) assert.equal(secrets.at(-1).text,env.RESEND_API_KEY);

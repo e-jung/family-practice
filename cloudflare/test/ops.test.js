@@ -78,3 +78,5 @@ test('registry snapshots are idempotent, historical registration is lazy, and UT
   assert.deepEqual(stats.attempts7,{test:3,learn:0,verse:0});
   assert.equal(stats.pinLockouts7,0);assert.equal(stats.ttsDaily.length,7);assert.ok(stats.ttsDaily.every(row=>row.synthesized_characters===0 && row.cache_hits===0 && row.quota_429===0));
 });
+
+ test('accounts ops reports numeric parents and binding health only',async t=>{const f=emptyFixture(t);f.env.OPS_TOKEN='operator-secret';const stats=async()=>(await f.req('/api/ops/stats',undefined,auth)).body.accounts;assert.deepEqual(await stats(),{parents:0,service:'unbound'});let calls=0;f.env.ACCOUNTS_SVC={getUser:async({sub})=>{assert.match(sub,/^jl1_probe/);calls++;return null;}};assert.deepEqual(await stats(),{parents:0,service:'ok'});assert.equal(calls,1);f.env.ACCOUNTS_SVC.getUser=async()=>({error:'temporarily_unavailable'});assert.deepEqual(await stats(),{parents:0,service:'error'});f.env.ACCOUNTS_SVC.getUser=async()=>{throw Error('private detail');};assert.deepEqual(await stats(),{parents:0,service:'error'});});

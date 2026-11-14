@@ -1587,7 +1587,7 @@ function privacy() {
     el("h2", {}, "Speech & hosting"),
     el("p", {}, "Cloud voice is the default. Text being read aloud (spelling words, practice sentences, and Bible verses) is sent to Cloudflare Workers AI to generate speech; family profile names and typed answers are not included in speech requests. Already-heard audio is cached in bounded browser memory for replay, and Cloudflare caches generated clips for reuse. The app shell is saved on this device for faster loading; family data and answers are not saved in the offline cache. You can choose Device voice in family settings; it is also the automatic fallback when cloud speech is unavailable. Device voice availability and whether speech is processed locally depend on your browser and operating system. Practice data is stored with the app’s Cloudflare hosting services; normal hosting request logs may include technical information such as IP addresses."),
     el("h2", {}, "You stay in control"),
-    el("p", {}, "In Parent mode you can export a backup, remove a child and their practice history, or permanently delete the whole family. Keep backups private. Parent sign-in is optional. It stores your parent email and links to families you choose, allowing code recovery and parent access. Google sign-in redirects to Google only when you choose it; email sign-in sends a one-time code. Email reminders are opt-in. Delete your sign-in or unlink a parent in Parent mode without deleting family data. Keep your code and PIN safe; PINs cannot be recovered."),
+    el("p", {}, "In Parent mode you can export a backup, remove a child and their practice history, or permanently delete the whole family. Keep backups private. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. Linked families allow code recovery and parent access. Google sign-in navigates through Jesklabs Accounts to Google only when you choose it; email sign-in sends a one-time code. Email reminders are opt-in. Delete your sign-in or unlink a parent in Parent mode without deleting family data. Keep your code and PIN safe; PINs cannot be recovered."),
     el("h2", {}, "Credits"),
     el("p", {}, "Text face: Practice Reader, a Latin subset of Andika by SIL International. Headings: Barlow Condensed by The Barlow Project Authors. Both use the SIL Open Font License 1.1. Key sound: “click_002” from Kenney’s Interface Sounds (CC0). All are served from this site; nothing loads from a third party."),
     el("div", { class: "row" }, button("Back", () => { history.replaceState({}, "", "/"); if (familyCode && state.family) render(); else landing(); }, "secondary"),
@@ -1612,8 +1612,9 @@ const sharing = createSharingUI({el, button, field, input, textArea, modal, toas
 });
 (async () => {
   await identity.init();
+  const authReturn = new URLSearchParams(location.search).get("auth");
   const signedInReturn = new URLSearchParams(location.search).has("signedIn");
-  if (signedInReturn) { history.replaceState({}, "", "/"); await identity.finishSignIn(); return; }
+  if (signedInReturn || authReturn) { history.replaceState({}, "", "/"); landing(); await identity.finishSignIn(authReturn); return; }
   const publicMatch = location.pathname.match(/^\/(s|c)\/([A-Za-z0-9_-]+)\/?$/);
   if (publicMatch) { await sharing.publicPage(publicMatch[1], publicMatch[2]); return; }
   if (location.pathname === "/privacy" || location.pathname === "/privacy/") { privacy(); return; }

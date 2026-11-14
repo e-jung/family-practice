@@ -60,14 +60,6 @@ export function buildPracticeNotice({kind, familyName = 'Your family', dueWords 
   return {subject, text:[`Family Practice — ${clean(familyName)}`, '', subject, '', ...paragraphs, '', ...footerLines(kind,practiceUrl,unsubscribe)].join('\n'), html:frame({familyName,title:subject,body:paragraphs.map(paragraph).join(''),practiceUrl,unsubscribe,explanation:optIn[kind]}), ...(unsubscribe ? {unsubscribe:safeLink(unsubscribe)} : {})};
 }
 
-export function buildSignInEmail({code} = {}) {
-  if (!/^\d{6}$/.test(String(code))) throw new Error('Invalid sign-in code');
-  const subject = 'Your Family Practice sign-in code';
-  const expiry = 'It expires in 10 minutes.';
-  const explanation = "You’re receiving this because you requested a sign-in code for Family Practice. If you didn't request this, ignore this email.";
-  return {subject, text:`Family Practice\n\nYour Family Practice code is ${code}. ${expiry}\n\n${explanation}`, html:frame({title:'Your sign-in code',body:paragraph('Your Family Practice code is:')+`<p style="margin:16px 0 24px;padding:16px;background-color:#F2F3EE;font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;font-size:36px;font-weight:700;letter-spacing:6px;color:#2446A8;">${code}</p>`+paragraph(expiry),explanation})};
-}
-
 function safeLink(value) {
   const url = new URL(value);
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || /[\r\n<>]/.test(String(value))) throw new Error('Invalid email URL');
