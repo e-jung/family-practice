@@ -23,3 +23,5 @@ test('review nudges only Tuesday and Friday local time, replay safe, never retry
  for(const date of ['2026-11-17T01:00:00Z','2026-11-18T01:00:00Z','2026-11-18T01:00:00Z','2026-11-19T01:00:00Z','2026-11-21T01:00:00Z'])await scheduledEmails(f.env,new Date(date));assert.equal(f.messages.length,2);
  delete f.env.EMAIL_TEST_SINK;f.env.RESEND_API_KEY='mock';let requests=0;const reject=async()=>{requests++;return new Response('',{status:500});};await scheduledEmails(f.env,new Date('2026-11-25T01:00:00Z'),reject);await scheduledEmails(f.env,new Date('2026-11-25T01:00:00Z'),reject);assert.equal(requests,1);assert.ok(f.calls.includes('/mail-failed'));
 });
+
+test('multi-family summaries cover all fifty possible children',()=>{const result=buildWeeklyDigest({kids:Array.from({length:50},(_,i)=>({name:'Kid '+i,dueWords:i}))});for(let i=0;i<50;i++)assert.ok(result.text.includes('Kid '+i+':'));});

@@ -10,7 +10,7 @@ import { createHandler } from './core.js';
 import {sha256,generateFamilyCode,normalizeCode,validCode,equalSecret} from './auth.js';
 const json=(data,status=200,extra={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...extra}});
 export class FamilyDatabase {
-  constructor(ctx,env) { this.ctx=ctx;this.env={...env};this.handler=createHandler(ctx,this.env);this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS linked_parents(hash TEXT PRIMARY KEY,masked TEXT NOT NULL)'); }
+  constructor(ctx,env) { this.ctx=ctx;this.env={...env};this.handler=createHandler(ctx,this.env);this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS linked_parents(hash TEXT PRIMARY KEY,masked TEXT NOT NULL); CREATE TABLE IF NOT EXISTS account_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)');this.ctx.storage.sql.exec('INSERT OR IGNORE INTO account_meta VALUES(?,?)','link_epoch',crypto.randomUUID()); }
   fetch(request) {
     return this.ctx.blockConcurrencyWhile(async()=> {
       this.env.familyIdHash=request.headers.get('X-Internal-Family-Hash');
@@ -21,8 +21,11 @@ export class FamilyDatabase {
       if(path.startsWith('/api/internal/account/')) {
         const family=[...sql.exec('SELECT * FROM family WHERE id=1')][0];if(!family)return json({error:'Family not found'},404);
         const b=await request.json(),op=path.split('/').pop();
-        if(op==='link'){if(![...sql.exec('SELECT hash FROM linked_parents WHERE hash=?',b.hash)].length&&[...sql.exec('SELECT hash FROM linked_parents')].length>=4)return json({error:'At most four parents per family'},409);sql.exec('INSERT OR REPLACE INTO linked_parents VALUES(?,?)',b.hash,b.masked);return json({name:family.name});}
-        if(op==='unlink'){sql.exec('DELETE FROM linked_parents WHERE hash=?',b.hash);return json({ok:true});}
+        const linkEpoch=[...sql.exec("SELECT value FROM account_meta WHERE key='link_epoch'")][0].value;
+        if(op==='proof')return json({epoch:linkEpoch});
+        if(op==='link'){if(b.epoch&&b.epoch!==linkEpoch)return json({error:'Family linking expired; unlock Parent mode and try again'},403);if(![...sql.exec('SELECT hash FROM linked_parents WHERE hash=?',b.hash)].length&&[...sql.exec('SELECT hash FROM linked_parents')].length>=4)return json({error:'At most four parents per family'},409);sql.exec('INSERT OR REPLACE INTO linked_parents VALUES(?,?)',b.hash,b.masked);return json({name:family.name});}
+        if(op==='open'){if(![...sql.exec('SELECT hash FROM linked_parents WHERE hash=?',b.hash)].length)return json({error:'Family not linked'},403);return json({ok:true});}
+        if(op==='unlink'){sql.exec('DELETE FROM linked_parents WHERE hash=?',b.hash);sql.exec("UPDATE account_meta SET value=? WHERE key='link_epoch'",crypto.randomUUID());return json({ok:true});}
         if(op==='follows')return json({follows:[...sql.exec('SELECT slug FROM class_follows ORDER BY slug')]});
         if(op==='parents')return json({parents:[...sql.exec('SELECT hash,masked FROM linked_parents ORDER BY masked')]});
         if(op==='digest') {
@@ -220,6 +223,7 @@ export default {
     if(isTts && response.ok) return tts(request,env,characters=>registry.fetch(new Request('https://internal/limit',{method:'POST',body:JSON.stringify({kind:'tts',ip,family:hash,characters})})),ctx,async(metric,count=1)=>{try{await registry.fetch(new Request('https://internal/voice',{method:'POST',body:JSON.stringify({metric,count})}));}catch{/* Best effort. */}});
     // Only a missing family counts, not missing resources in an existing space.
     if(response.status===404 && (await response.clone().json()).error==='Family not found') await limit('lookup-failed');
+    if(url.pathname==='/api/parent/lock'&&response.ok){const h=new Headers(response.headers);h.append('Set-Cookie','fp_account=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');return new Response(response.body,{status:response.status,headers:h});}
     return response;
   }
 };

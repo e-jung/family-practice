@@ -6,7 +6,7 @@ export const DEFAULT_EMAIL_FROM = 'Family Practice <spelling@jesklabs.com>';
 /** Only allowlisted summaries and up to five tricky words; never answers, codes or PINs. */
 export function buildWeeklyDigest({ familyName = 'Your family', kids = [], practiceUrl = '', unsubscribe = '' } = {}) {
   const lines = [`${clean(familyName)} — weekly practice`, '', 'Here is your weekly Family Practice summary.'];
-  for (const kid of kids.slice(0, 10)) {
+  for (const kid of kids.slice(0, 50)) {
     const name = clean(kid.name || kid.firstName || 'Your child');
     const count = value => Math.max(0, Math.floor(Number(value) || 0));
     const attempts = count(kid.attempts ?? kid.practiceCount);

@@ -344,7 +344,7 @@ schedule objects and `weeklyDigest`/`practiceReminder` aliases also work.
 The cron handler adapts product preference flags, claims a local calendar date/kind
 before sending, and enforces quotas, bounded fanout and retention. The repeated
 fall-back DST hour must not resend; a nonexistent spring-forward hour is skipped.
-`buildWeeklyDigest` accepts `familyName`, at most ten `kids` summaries
+`buildWeeklyDigest` accepts `familyName`, at most fifty `kids` summaries across five families
 (`name, attempts, accuracy` in percent, `streak, dueWords, lists, trickyWords, verseStarsChange`), `practiceUrl` and
 `unsubscribe`. `sendEmail` returns `{sent:true}` or `{sent:false,reason,...}`.
 There are no automatic retries, including timeouts/429/5xx; ambiguous network

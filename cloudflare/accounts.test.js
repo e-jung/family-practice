@@ -87,7 +87,7 @@ test('test sink is localhost-only, JSON/origin boundaries and delivery failures'
 
 test('cross-family recovery, account parent access and unlink isolation',async t=>{
   const f=fixture(t),a=await f.create('A');await f.login('parent@example.com',a);
-  const b=await f.create('B');await f.req('/api/parent/lock',{});f.jar.delete('parent');
+  const b=await f.create('B');f.jar.delete('parent');
   assert.equal((await f.req('/api/admin/export')).status,200);
   const recovered=(await f.req('/api/auth/recover')).body.families;assert.equal(recovered.length,2);
   const ah=await sha256(a),bh=await sha256(b);assert.equal((await f.req('/api/auth/open',{hash:ah})).body.code,a);
@@ -156,4 +156,51 @@ test('Google subject cannot be replaced for an existing account',async t=>{
   const f=fixture(t);assert.equal((await f.store('/login',{hash:'h',email:'p@example.com',sub:'original'})).status,200);
   assert.equal((await f.store('/login',{hash:'h',email:'p@example.com',sub:'different'})).status,403);
   assert.equal((await f.store('/get',{hash:'h'})).body.account.google_sub,'original');
+});
+
+
+test('Lock signs out account access; pending link proofs cannot restore a revoked parent',async t=>{
+ const f=fixture(t),code=await f.create(),email='parent@example.com';const {hash}=await f.login(email,code);
+ await f.req('/api/auth/code/send',{email,familyCode:code});
+ const message=(await f.req('/api/auth/test/last-message?email='+email)).body.message;
+ const pendingCode=message.text.match(/\b\d{6}\b/)[0];
+ assert.equal((await f.req('/api/auth/unlink',{familyCode:code,parentHash:hash})).status,200);f.jar.delete('parent');
+ assert.equal((await f.req('/api/auth/code/verify',{email,code:pendingCode})).status,403);
+ assert.equal((await f.req('/api/admin/export')).status,401);
+ await f.req('/api/parent/unlock',{pin:'1234'});await f.req('/api/auth/link',{familyCode:code});f.jar.delete('parent');
+ assert.equal((await f.req('/api/admin/export')).status,200);
+ assert.equal((await f.req('/api/parent/lock',{})).status,200);
+ assert.equal((await f.req('/api/auth/session')).body.signedIn,false);
+ assert.equal((await f.req('/api/admin/export')).status,401);
+});
+test('auth-family lookups share durable unknown-code throttles',async t=>{
+ const f=fixture(t);for(let i=0;i<30;i++)assert.equal((await f.req('/api/auth/parents',undefined,{'X-Family-Code':generateFamilyCode()})).status,404);
+ assert.equal((await f.req('/api/auth/parents',undefined,{'X-Family-Code':generateFamilyCode()})).status,429);
+});
+test('mail claims recheck opt-in and current links after a stale cron read',async t=>{
+ const f=fixture(t),code=await f.create(),{hash}=await f.login('parent@example.com',code),family=await sha256(code);
+ const claim={hash,key:'weekly',value:'2026-11-15',familyHashes:[family]};
+ assert.equal((await f.store('/claim',claim)).body.claimed,false);
+ await f.req('/api/auth/prefs',{weekly:true,timezone:'UTC'});
+ assert.equal((await f.store('/claim',{...claim,familyHashes:['removed']})).body.claimed,false);
+ assert.equal((await f.store('/claim',claim)).body.claimed,true);
+ assert.equal((await f.store('/claim',claim)).body.claimed,false);
+ await f.store('/unsubscribe',{hash});assert.equal((await f.store('/claim',{...claim,value:'2026-11-22'})).body.claimed,false);
+});
+
+test('pending Google linking proof is invalid after unlink',async t=>{
+ const f=fixture(t),code=await f.create(),email='google@example.com';const {hash}=await f.login(email,code);
+ f.env.GOOGLE_CLIENT_ID='local-client';f.env.GOOGLE_CLIENT_SECRET='local-secret';
+ const start=await f.req('/auth/google/start?familyCode='+encodeURIComponent(code));assert.equal(start.status,302);
+ const flow=await readValue(f.env.SESSION_SECRET,'oauth',f.jar.get('fp_oauth'));
+ await f.req('/api/auth/unlink',{familyCode:code,parentHash:hash});f.jar.delete('parent');
+ const r=await f.req('/auth/google/callback?code=mock&state='+flow.state,undefined,{},async()=>Response.json({id_token:idToken({email,email_verified:true,sub:'subject',aud:'local-client',iss:'https://accounts.google.com',exp:Date.now()/1000+600})}));
+ assert.equal(r.status,403);assert.equal((await f.req('/api/admin/export')).status,401);
+});
+
+test('family deletion removes identity links and still requires the fresh PIN',async t=>{
+ const f=fixture(t),a=await f.create('A');await f.login('parent@example.com',a);await f.create('B');
+ assert.equal((await f.req('/api/admin/delete-family',{pin:'0000',confirmation:'B'})).status,401);
+ assert.equal((await f.req('/api/admin/delete-family',{pin:'1234',confirmation:'B'})).status,200);
+ const families=(await f.req('/api/auth/recover')).body.families;assert.deepEqual(families.map(x=>x.code),[a]);
 });

@@ -35,7 +35,7 @@ try{
  await ok(parent,'/api/parent/unlock',{pin:'1234'});await login(parent,email,a);
  const b=(await ok(parent,'/api/families',{name:'Sign-in smoke B',pin:'1234'},201)).body.code;
  parent.code=b;families.push({code:b,name:'Sign-in smoke B'});
- await ok(parent,'/api/parent/lock',{});parent.jar.delete('parent');
+ parent.jar.delete('parent');
  eq((await ok(parent,'/api/state')).body.parent,true);await ok(parent,'/api/admin/export');
  const recovery=(await ok(parent,'/api/auth/recover')).body.families;eq(recovery.length,2);
  eq(recovery.map(f=>f.code).sort(),[a,b].sort());

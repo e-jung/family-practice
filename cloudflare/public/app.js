@@ -261,10 +261,10 @@ async function reload() {
 function header() {
   const actions = $("header-actions");
   actions.replaceChildren(...[
-    familyCode && !kid ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
+    familyCode && !kid ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); await identity.init(); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
     kid && !parentPage ? button([icon("back"), "Switch kid"], () => { kid = null; render(); }, "quiet small") : null,
     button([icon("lock"), "Parent mode"], () => state.parent ? parentHome() : unlock(), "secondary small"),
-    state.parent ? button("Lock", async () => { await api("/api/parent/lock", {}); parentPage = false; await reload(); render(); }, "quiet small") : null,
+    state.parent ? button("Lock", async () => { await api("/api/parent/lock", {}); await identity.init(); parentPage = false; await reload(); render(); }, "quiet small") : null,
   ].filter(Boolean));
 }
 const TONES = { Spelling: "spelling", "Bible Verses": "verses", Progress: "progress", Parent: "parent" };
@@ -1581,7 +1581,7 @@ function privacy() {
     el("div", { class: "row" }, button("Back", () => { history.replaceState({}, "", "/"); if (familyCode && state.family) render(); else landing(); }, "secondary"),
       familyCode ? button("Forget family on this device", async () => {
         if (!confirm("Forget the saved family code on this device? Keep a copy first. Your family’s server data will not be deleted.")) return;
-        await api("/api/parent/lock", {}).catch(() => {});
+        await api("/api/parent/lock", {}).catch(() => {}); await identity.init();
         rememberFamily(""); kid = null; state.parent = false;
         history.replaceState({}, "", "/"); landing();
       }, "secondary") : null),
@@ -1590,7 +1590,7 @@ function privacy() {
 const identity = createIdentityUI({el, button, field, input, modal, toast, app,
   current: () => ({state, familyCode}), openFamily, landing,
   refresh: async () => {
-    if (familyCode) { await api("/api/parent/lock", {}).catch(() => {}); await reload(); parentPage = false; render(); }
+    if (familyCode) { await api("/api/parent/lock", {}).catch(() => {}); await identity.init(); await reload(); parentPage = false; render(); }
     else landing();
   },
 });
