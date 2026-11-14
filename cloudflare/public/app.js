@@ -1,3 +1,4 @@
+import {createIdentityUI} from "/identity.js";
 import {createSharingUI} from "/sharing-ui.js";
 import {newLearnWord, advanceLearn} from "/learn.js";
 import {icon} from "/icons.js";
@@ -349,7 +350,7 @@ function render() {
         state.parent ? button("+ Add your first kid", () => editKid()) : button("Unlock Parent mode", unlock),
       ));
     if (state.parent)
-      app.append(el("div", { class: "row" }, button("Manage family & settings", () => parentHome(), "secondary")));
+      app.append(el("div", { class: "row" }, button("Manage family & settings", () => parentHome(), "secondary"), identity.signedIn() ? button("Choose another family", () => landing(), "quiet") : null));
     return;
   }
   if (tab === "Spelling") spellingHome();
@@ -1193,7 +1194,7 @@ function editKid(k) {
       }),
   );
 }
-const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Connect an AI assistant", "Shared lists", "Class lists", "Following"];
+const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Parent sign-in", "Connect an AI assistant", "Shared lists", "Class lists", "Following"];
 function parentHome() {
   if (!state.parent) return unlock();
   parentPage = true;
@@ -1212,6 +1213,7 @@ function parentHome() {
     const host = el("div", {}, el("p", {}, "Loading…")); app.append(host);
     sharing[parentSection === "Shared lists" ? "sharedAdmin" : parentSection === "Class lists" ? "classesAdmin" : "followsAdmin"](host).catch(err => host.replaceChildren(el("p", {role:"alert"}, err.message), button("Try again", parentHome, "secondary"))); return;
   }
+  if (parentSection === "Parent sign-in") { const host = el("section", {class: "section"}); app.append(host); identity.manage(host); return; }
   if (parentSection === "Connect an AI assistant") { assistantControls(); return; }
   if (parentSection === "Spelling lists" || parentSection === "Bible verses") { parentPractice(); return; }
   const section = (title, ...children) => el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, title)), ...children);
@@ -1393,7 +1395,7 @@ function clearView() {
 function familyControls() {
   return el("div", { class: "section" },
     el("div", { class: "section-title" }, el("h2", {}, "Your family space"), el("span", { class: "muted" }, state.family?.name || "Family Practice")),
-    el("p", {}, "Your family code opens practice on another device. The parent PIN protects settings and backups. Keep both safe; there is no email-based recovery."),
+    el("p", {}, "Your family code opens practice on another device. The parent PIN protects settings and backups. Keep both safe. Optional Parent sign-in can recover a linked family’s code; it does not recover your PIN."),
     el("div", { class: "row" },
       button("Save your family code", codeCard, "secondary"),
       button("Add sample practice", async () => {
@@ -1453,7 +1455,7 @@ function codeCard() {
   const joinURL = location.origin + "/f/" + encodeURIComponent(familyCode);
   app.append(el("section", { class: "print-sheet code-card section" },
     el("h1", {}, state.family?.name || "Your family practice space"),
-    el("p", { class: "notice" }, "Save this code — it’s the only way back in. Write it down or copy it. We can’t recover it."),
+    el("p", { class: "notice" }, "Save this code — it always opens your family’s practice. Write it down or copy it. Optional Parent sign-in can recover codes for linked families."),
     el("p", { class: "muted" }, "Family code"), el("strong", { class: "family-code" }, familyCode),
     el("p", { class: "join-url" }, joinURL),
     el("p", {}, "Open Family Practice on another device and enter this code, or use the link above. Anyone with the code can view and use your family’s practice. Share it only with trusted family members."),
@@ -1510,11 +1512,12 @@ function landing(prefill = "", message = "") {
   ));
   if (message) app.append(el("p", { role: "alert", class: "notice" }, message));
   if (resumeCode && !prefill) app.append(el("div", { class: "row section" }, button("Return to saved family", () => openFamily(resumeCode), "secondary")));
+  const identityEntry = el("section", {class: "section"}); app.append(identityEntry); identity.entry(identityEntry, prefill);
   app.append(el("div", { class: "offer" },
     el("div", {}, el("strong", {}, "Spelling, read aloud"), el("span", {}, "Word, sentence, word. One retry, then the letters spelled out.")),
     el("div", {}, el("strong", {}, "Bible verses"), el("span", {}, "Paste your family’s wording. Blanks, first letters, then from memory.")),
     el("div", {}, el("strong", {}, "Progress for parents"), el("span", {}, "First-try accuracy, tricky words, and verse stars.")),
-    el("div", {}, el("strong", {}, "No accounts"), el("span", {}, "No email, ads, or tracking. First names only. A family code is your key.")),
+    el("div", {}, el("strong", {}, "No account required"), el("span", {}, "No ads or tracking. Kids use first names and a family code. Parent sign-in is optional.")),
   ));
   const name = input("family-name", "", { maxlength: 80, autocomplete: "off", placeholder: "The Hill family" });
   const pin = input("create-pin", "", { type: "password", required: true, minlength: 4, maxlength: 8, pattern: "[0-9]{4,8}", inputmode: "numeric", autocomplete: "new-password" });
@@ -1532,6 +1535,9 @@ function landing(prefill = "", message = "") {
       kid = null;
       await reload();
       history.replaceState({}, "", "/");
+      if (identity.signedIn()) {
+        try { await identity.linkNewFamily(); } catch (err) { toast("Family created, but sign-in linking failed: " + err.message); codeCard(); return; }
+      }
       codeCard();
       toast("Family created! Save your code before you begin.");
     } catch (err) { createError.textContent = err.message; }
@@ -1569,7 +1575,7 @@ function privacy() {
     el("h2", {}, "Speech & hosting"),
     el("p", {}, "Cloud voice is the default. Text being read aloud (spelling words, practice sentences, and Bible verses) is sent to Cloudflare Workers AI to generate speech; family profile names and typed answers are not included in speech requests. Already-heard audio is cached in bounded browser memory for replay, and Cloudflare caches generated clips for reuse. The app shell is saved on this device for faster loading; family data and answers are not saved in the offline cache. You can choose Device voice in family settings; it is also the automatic fallback when cloud speech is unavailable. Device voice availability and whether speech is processed locally depend on your browser and operating system. Practice data is stored with the app’s Cloudflare hosting services; normal hosting request logs may include technical information such as IP addresses."),
     el("h2", {}, "You stay in control"),
-    el("p", {}, "In Parent mode you can export a backup, remove a child and their practice history, or permanently delete the whole family. Keep backups private. No email is collected for account recovery, so keep both your code and PIN safe."),
+    el("p", {}, "In Parent mode you can export a backup, remove a child and their practice history, or permanently delete the whole family. Keep backups private. Parent sign-in is optional. It stores your parent email and links to families you choose, allowing code recovery and parent access. Google sign-in redirects to Google only when you choose it; email sign-in sends a one-time code. Email reminders are opt-in. Delete your sign-in or unlink a parent in Parent mode without deleting family data. Keep your code and PIN safe; PINs cannot be recovered."),
     el("h2", {}, "Credits"),
     el("p", {}, "Text face: Practice Reader, a Latin subset of Andika by SIL International. Headings: Barlow Condensed by The Barlow Project Authors. Both use the SIL Open Font License 1.1. Key sound: “click_002” from Kenney’s Interface Sounds (CC0). All are served from this site; nothing loads from a third party."),
     el("div", { class: "row" }, button("Back", () => { history.replaceState({}, "", "/"); if (familyCode && state.family) render(); else landing(); }, "secondary"),
@@ -1581,11 +1587,21 @@ function privacy() {
       }, "secondary") : null),
   ));
 }
+const identity = createIdentityUI({el, button, field, input, modal, toast, app,
+  current: () => ({state, familyCode}), openFamily, landing,
+  refresh: async () => {
+    if (familyCode) { await api("/api/parent/lock", {}).catch(() => {}); await reload(); parentPage = false; render(); }
+    else landing();
+  },
+});
 const sharing = createSharingUI({el, button, field, input, textArea, modal, toast, api, app,
   current: () => ({state, kid, familyCode}), reload, unlock, openFamily, rememberFamily, clearView,
   goPractice: () => {parentPage = false; history.replaceState({}, "", "/"); render();},
 });
 (async () => {
+  await identity.init();
+  const signedInReturn = new URLSearchParams(location.search).has("signedIn");
+  if (signedInReturn) { history.replaceState({}, "", "/"); landing(); return; }
   const publicMatch = location.pathname.match(/^\/(s|c)\/([A-Za-z0-9_-]+)\/?$/);
   if (publicMatch) { await sharing.publicPage(publicMatch[1], publicMatch[2]); return; }
   if (location.pathname === "/privacy" || location.pathname === "/privacy/") { privacy(); return; }
