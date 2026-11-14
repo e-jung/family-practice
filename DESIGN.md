@@ -24,6 +24,8 @@ Section tone is set with `data-tone` on `#app` (spelling, verses, progress, pare
 ## Components
 - **Band**: full-bleed tone field with H1 and file-tab section nav sitting on its lower edge.
 - **Practice band**: exit (×), title, status, one cell per word (`.chart-cells`, the signature "planting chart").
+- **Learn stages**: numbered, labelled Copy → Fade → Fade more → Recall path under the prompt (short words: Copy → Recall). Cobalt filled = complete; marigold with ink rule + `aria-current="step"` = you are here; outlined = next. These are within-word steps, never the band’s per-word squares.
+- **Word bank**: ruled three-column counts (Learning, Getting it, Mastered), then compact word rows; no additional card grid.
 - **Packet**: white stock, tone strip header, no shadow. Featured item only; everything else is ruled rows (`.rows`) under a 2px ink section rule (`.section-title`).
 - **Buttons**: tone fill (primary), white with rule (secondary), underlined text (quiet). 10px radius, ≥44px (≥48 default, 56 on the desk). No pills except `.segments`.
 - **Keyboard** (`keyboard.js`): docked at the bottom of the desk on touch; white keys on #DFE2DA, marigold pressed state, primary action as the widest bottom key.

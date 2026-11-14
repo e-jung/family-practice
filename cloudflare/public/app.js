@@ -464,6 +464,8 @@ async function learnToTest(round) {
     await api("/api/attempts", {session_id: round.session, word_id: w.id, typed: "", mode: "learn", step: "skip"});
     if (view !== viewVersion) return;
   }
+  await api("/api/sessions/complete", {session_id: round.session, abandoned: true});
+  if (view !== viewVersion) return;
   startSpelling(round.ws, round.list);
 }
 function learnStep(round) {
@@ -567,9 +569,10 @@ async function startSpelling(ws, list = null, kind = "spelling") {
       el("div", { class: "row form-actions" },
         button("Let’s begin", async () => {
           const view = viewVersion;
-          const session = await api("/api/sessions", { kid_id: kid.id, list_id: list?.id, word_ids: ws.map((w) => w.id), kind });
+          const ordered = shuffle.checked ? shuffled(ws) : [...ws];
+          const session = await api("/api/sessions", { kid_id: kid.id, list_id: list?.id, word_ids: ordered.map((w) => w.id), kind });
           if (view !== viewVersion) return;
-          spellingStep({ ws: shuffle.checked ? shuffled(ws) : [...ws], list, kind, session: session.id, index: 0, first: 0, misses: [], results: [] });
+          spellingStep({ ws: ordered, list, kind, session: session.id, index: 0, first: 0, misses: [], results: [] });
         }, "primary"),
       ),
     ),
@@ -859,7 +862,7 @@ async function progressHome() {
     $("progress-loading")?.remove();
     const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
     app.append(el("p", { class: "summary-line" },
-      `${plural(p.listsCompleted, "list", "lists")} completed · ${plural(p.streak, "day", "days")} in a row · ${plural(p.tricky.length, "tricky word", "tricky words")} to keep practicing.`,
+      `${plural(p.listsCompleted, "list", "lists")} completed · ${plural(p.streak, "day", "days")} in a row · ${plural(p.wordBank?.dueCount ?? p.wordBank?.due.length ?? 0, "word", "words")} ready for review.`,
       el("small", {}, "Practice days use UTC.")));
     app.append(el("div", { class: "section" },
       el("div", { class: "section-title" }, el("h2", {}, "First-try spelling accuracy")),
@@ -887,7 +890,7 @@ async function progressHome() {
       el("div", { class: "section-title" }, el("h2", {}, "Recent practice")),
       p.sessions.length
         ? el("ul", { class: "rows" }, p.sessions.slice(0, 12).map((s) => el("li", {},
-            el("span", {}, s.kind === "verse" ? el("strong", {}, "Verse practice") : [el("strong", {}, s.kind === "learn" ? "Learn" : "Test"), " · ", s.title || "Tricky words"]),
+            el("span", {}, s.kind === "verse" ? el("strong", {}, "Verse practice") : [el("strong", {}, s.kind === "learn" ? "Learn" : s.kind === "review" ? "Review" : "Test"), " · ", s.title || (s.kind === "review" ? "Word bank" : "Tricky words")]),
             el("span", { class: "meta" }, `${new Date(s.created_at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${s.completed ? "Complete" : "In progress"}`))))
         : el("p", {}, "Your first practice can be today."),
     ));
