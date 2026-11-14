@@ -17,12 +17,15 @@ export const MCP_TOOLS=[
  ['add_spelling_list','Create a new weekly list for a kid (id or exact case-insensitive name). Supply kid-friendly example sentences; missing sentences stay blank. Add a new list for new weekly words.',schema({kid,...listFields},['kid','words'])],
  ['update_spelling_list','Update a list’s title/date or replace its word set while preserving practice history. Supply kid-friendly sentences; missing sentences stay blank.',schema({list_id:id,...listFields},['list_id'])],
  ['add_verse',"Add a verse for a kid (id or exact case-insensitive name). Paste the family's own translation text; do not fabricate scripture. Public-domain KJV/WEB is fine.",schema({kid,reference:text(120),text:text(2000),translation:{type:'string',maxLength:60},due_date:{type:'string',format:'date'}},['kid','reference','text'])],
+ ['get_shared_list','Read an unlisted spelling snapshot or published class week. Only public content is returned.',schema({url_or_slug:text(2048),week_id:text(36)},['url_or_slug'])],
+ ['import_shared_list','Copy an unlisted snapshot or class week into selected kids’ editable practice lists.',schema({url_or_slug:text(2048),kids:{type:'array',minItems:1,maxItems:10,items:id},include_verse:{type:'boolean'},week_id:text(36)},['url_or_slug','kids'])],
  ['get_progress','Read aggregates only: first-try accuracy per list, Learning/Getting it/Mastered counts, struggling words, due-today count and verse stars. Kid accepts id or exact case-insensitive name.',schema({kid},['kid'])],
-].map(([name,description,inputSchema])=>({name,description,inputSchema,annotations:{readOnlyHint:!['add_spelling_list','update_spelling_list','add_verse'].includes(name),destructiveHint:false,openWorldHint:false}}));
-const writable=name=>['add_spelling_list','update_spelling_list','add_verse'].includes(name);
+].map(([name,description,inputSchema])=>({name,description,inputSchema,annotations:{readOnlyHint:!['add_spelling_list','update_spelling_list','add_verse','import_shared_list'].includes(name),destructiveHint:false,openWorldHint:false}}));
+const writable=name=>['add_spelling_list','update_spelling_list','add_verse','import_shared_list'].includes(name);
 function valid(value,s) {
  if(s.anyOf)return s.anyOf.some(option=>valid(value,option));
  if(s.type==='object')return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(k=>Object.hasOwn(s.properties,k)&&valid(value[k],s.properties[k]))&&(s.required||[]).every(k=>Object.hasOwn(value,k));
+ if(s.type==='boolean')return typeof value==='boolean';
  if(s.type==='integer')return Number.isSafeInteger(value)&&value>=s.minimum;
  if(s.type==='array')return Array.isArray(value)&&value.length>=s.minItems&&value.length<=s.maxItems&&value.every(v=>valid(v,s.items));
  if(s.type==='string')return typeof value==='string'&&value.length<=(s.maxLength??Infinity)&&value.trim().length>=(s.minLength??0)&&(!s.format||(/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value));

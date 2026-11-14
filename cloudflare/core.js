@@ -1,3 +1,4 @@
+import {createSharing} from './sharing.js';
 import {initConnections,createConnection,connectionFields,handleMcp} from './mcp.js';
 // REST/SQL port of ../server.js; grading logic remains shared in lib/practice.js.
 import {checkSpelling,compareVerse,trickyWords,words,normalize,scheduleWord,reviewBank} from "../lib/practice.js";
@@ -61,7 +62,8 @@ export function createHandler(ctx, env) {
   sql.exec('CREATE TABLE IF NOT EXISTS ops_meta(key TEXT PRIMARY KEY,value INTEGER NOT NULL)');
   sql.exec('CREATE TABLE IF NOT EXISTS ops_daily(day TEXT PRIMARY KEY,test INTEGER NOT NULL DEFAULT 0,learn INTEGER NOT NULL DEFAULT 0,verse INTEGER NOT NULL DEFAULT 0,pin_lockouts INTEGER NOT NULL DEFAULT 0)');
   const metric=column=>{const day=new Date().toISOString().slice(0,10);sql.exec(`INSERT INTO ops_daily(day,${column}) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET ${column}=${column}+1`,day);sql.exec('DELETE FROM ops_daily WHERE day<?',new Date(Date.now()-30*86400000).toISOString().slice(0,10));};
-  const tx = (fn) => ctx.storage.transactionSync(fn);
+  let txDepth=0;
+  const tx = fn => { if(txDepth)return fn();return ctx.storage.transactionSync(()=>{txDepth++;try{return fn();}finally{txDepth--;}}); };
   const setting = (k, fallback) =>
     get("SELECT value FROM settings WHERE key=?", k)?.value || fallback;
   const settings = () => ({
@@ -182,6 +184,7 @@ export function createHandler(ctx, env) {
       ).lastInsertRowid,
     );
   }
+  const sharing=createSharing(ctx,env,{all,get,addList,addVerse,tx});
   const prewarmList = () => {};
   const prewarmVerse = () => {};
   async function body(req, maxBytes = 256 * 1024) {
@@ -312,7 +315,7 @@ export function createHandler(ctx, env) {
         seen.add(w.kid_id+':'+w.key);
       }
     }
-    const textLimits={kids:{name:60,grade:30},lists:{title:120,date:10},words:{word:100,sentence:500},verses:{reference:120,text:2000,translation:60,due_date:10},attempts:{word:100,typed:200},verse_attempts:{verse_text:2000,verse_reference:120},settings:{key:20,value:200}};
+    const textLimits={kids:{name:60,grade:30},lists:{title:120,date:10,source_slug:151,source_week_id:36,source_kind:10,source_note:140,source_class_name:80},words:{word:100,sentence:500},verses:{reference:120,text:2000,translation:60,due_date:10,source_slug:151,source_week_id:36,source_kind:10,source_note:140,source_class_name:80},attempts:{word:100,typed:200},verse_attempts:{verse_text:2000,verse_reference:120},settings:{key:20,value:200}};
     const schemas = Object.fromEntries(
       tables.map((t) => [t, all(`PRAGMA table_info(${t})`)]),
     );
@@ -322,6 +325,7 @@ export function createHandler(ctx, env) {
       for (const row of b[t]) {
         if (!row || typeof row !== "object" || Array.isArray(row))
           fail("Invalid backup row");
+        if(t === "lists" || t === "verses"){row.source_slug ??= "";row.source_week_id ??= "";row.source_kind ??= "";row.source_note ??= "";row.source_class_name ??= "";}
         if (t === "attempts") { row.mode ??= "test"; row.step ??= 0; if(!["test","learn"].includes(row.mode) || (row.mode==="test" ? row.step!==0 : ![0,25,50,75,100,"skip"].includes(row.step))) fail("Invalid attempt mode/step"); }
         if (t === "sessions") {
           row.word_ids ??= "[]";
@@ -392,7 +396,8 @@ export function createHandler(ctx, env) {
       fail("Invalid speed");
     try {
       tx(() => {
-        sql.exec("DELETE FROM word_bank");
+        sql.exec("DELETE FROM shared_imports; DELETE FROM word_bank");
+        sql.exec("UPDATE class_follows SET last_imported='{}'");
         for (const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`);
         for (const t of tables) {
           const cols = schemas[t].map((c) => c.name);
@@ -422,7 +427,9 @@ export function createHandler(ctx, env) {
   return async (request) => {
     if(new URL(request.url).pathname==='/mcp') {
       if(!get('SELECT id FROM family WHERE id=1'))return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
-      return handleMcp(request,sql,(name,b)=>{
+      return handleMcp(request,sql,async(name,b)=>{
+        if(name==='get_shared_list')return sharing.read(b.url_or_slug??b.slug,b.week_id);
+        if(name==='import_shared_list')return sharing.importShared(b);
         const resolveKid=value=>{
           const matches=all('SELECT id,name FROM kids WHERE archived=0').filter(k=>typeof value==='number'?k.id===value:k.name.toLocaleLowerCase()===value.toLocaleLowerCase());
           if(matches.length!==1)fail(matches.length?'More than one kid has that name; use an id':'Kid not found',404);
@@ -467,16 +474,16 @@ export function createHandler(ctx, env) {
       const url = new URL(req.url, "http://localhost"),
         p = url.pathname,
         method = req.method;
-      if (!["GET", "POST"].includes(method)) fail("Method not allowed", 405);
+      if (!["GET", "POST", "PATCH", "DELETE"].includes(method)) fail("Method not allowed", 405);
       if (
-        method === "POST" &&
+        ["POST","PATCH","DELETE"].includes(method) &&
         req.headers.origin &&
         req.headers.origin !== `http://${req.headers.host}` &&
         req.headers.origin !== `https://${req.headers.host}`
       )
         fail("Cross-origin write denied", 403);
       if (
-        method === "POST" &&
+        ["POST","PATCH"].includes(method) &&
         !String(req.headers["content-type"] || "").startsWith(
           "application/json",
         )
@@ -524,6 +531,11 @@ export function createHandler(ctx, env) {
       if (p === "/api/config" && method === "GET") return json({serverTts:true});
       if (p.startsWith("/api/admin/") && !parent)
         fail("Unlock Parent mode first", 401);
+      if(p==='/api/follows'||/^\/api\/admin\/(shares|classes|import-shared|follows)(?:\/|$)/.test(p)) {
+        const data=['POST','PATCH'].includes(method)?await body(req):{};
+        const result=await sharing.route(p,method,data,parent,url.searchParams.get('refresh')==='1');
+        if(result!==undefined)return json(result,method==='POST'&&['/api/admin/shares','/api/admin/classes'].includes(p)?201:200);
+      }
       if(p==='/api/admin/connections' && method==='GET')return json({connections:all(`SELECT ${connectionFields} FROM mcp_connections ORDER BY created_at,id`)});
       if(p==='/api/admin/connections' && method==='POST')return json(await createConnection(sql,env.familyIdHash,await body(req,2048)),201);
       if(p==='/api/admin/connections/revoke' && method==='POST') {
@@ -797,13 +809,14 @@ export function createHandler(ctx, env) {
       if (p === "/api/admin/delete-family" && method === "POST") {
         const b=await body(req,2048); await verifyPin(b.pin);
         if(!b.confirmation || (b.confirmation !== family.name && b.confirmation !== env.familyCode)) fail("Type the family name or code exactly");
-        tx(()=>{sql.exec("DELETE FROM mcp_connections; DELETE FROM mcp_limits; DELETE FROM word_bank");for(const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`); sql.exec("DELETE FROM pin_limit; DELETE FROM family; DELETE FROM ops_meta; DELETE FROM ops_daily");});
+        if(env.SHARES)await sharing.stopAll();
+        tx(()=>{sql.exec("DELETE FROM class_follows; DELETE FROM shared_imports; DELETE FROM mcp_connections; DELETE FROM mcp_limits; DELETE FROM word_bank");for(const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`); sql.exec("DELETE FROM pin_limit; DELETE FROM family; DELETE FROM ops_meta; DELETE FROM ops_daily");});
         res.setHeader("Set-Cookie",cookie("",0)); return json({ok:true});
       }
       if (p === "/api/admin/remove-kid" && method === "POST") {
         const b=await body(req), id=integer(b.id);
         tx(()=>{
-          for(const t of ["word_bank","attempts","verse_attempts","sessions"]) run(`DELETE FROM ${t} WHERE kid_id=?`,id);
+          for(const t of ["shared_imports","word_bank","attempts","verse_attempts","sessions"]) run(`DELETE FROM ${t} WHERE kid_id=?`,id);
           run("DELETE FROM words WHERE list_id IN (SELECT id FROM lists WHERE kid_id=?)",id);
           for(const t of ["lists","verses","kids"]) run(`DELETE FROM ${t} WHERE ${t==='kids'?'id':'kid_id'}=?`,id);
         }); return json({ok:true});

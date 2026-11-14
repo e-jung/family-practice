@@ -1,3 +1,5 @@
+import {shareRequest,validSlug} from './sharing.js';
+export {ShareStore} from './sharing.js';
 import {routeToken} from './mcp.js';
 import { tts } from './tts.js';
 export { TtsCache } from './tts.js';
@@ -10,6 +12,7 @@ export class FamilyDatabase {
     return this.ctx.blockConcurrencyWhile(async()=> {
       this.env.familyIdHash=request.headers.get('X-Internal-Family-Hash');
       this.env.familyCode=request.headers.get('X-Family-Code');
+      this.env.sharingIpHash=request.headers.get('X-Internal-Sharing-IP');
       const response=await this.handler(request);
       const sql=this.ctx.storage.sql, day=new Date().toISOString().slice(0,10);
       const exists=[...sql.exec('SELECT id FROM family LIMIT 1')].length>0;
@@ -61,12 +64,17 @@ export class RegistryLimits {
         return json({ok:true});
       }
       const {kind,ip,family,characters}=payload;
-      if(!['create','lookup-check','lookup-failed','tts','mcp'].includes(kind) || !/^[a-f0-9]{64}$/.test(ip)) return json({error:'Invalid limit'},400);
+      if(!['create','lookup-check','lookup-failed','tts','mcp','sharing-read','sharing-import','sharing-create'].includes(kind) || !/^[a-f0-9]{64}$/.test(ip)) return json({error:'Invalid limit'},400);
       const now=Date.now();this.sql.exec('DELETE FROM limits WHERE until<=?',now);
       const get=key=>[...this.sql.exec('SELECT * FROM limits WHERE key=?',key)][0];
       const quotaHit=()=>this.sql.exec('INSERT INTO ops_voice(day,quota_429) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET quota_429=quota_429+1',today);
       const bump=(key,ms)=>this.sql.exec('INSERT INTO limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',key,now+ms);
-      if(kind==='mcp') {
+      if(kind.startsWith('sharing-')) {
+        if(kind==='sharing-create'&&!/^[a-f0-9]{64}$/.test(family||''))return json({error:'Invalid limit'},400);
+        const [key,max,ms]=kind==='sharing-read'?['sharing:read:'+ip,120,60000]:kind==='sharing-import'?['sharing:import:'+ip,60,3600000]:['sharing:create:'+family+':'+today,20,Date.parse(today+'T00:00:00Z')+86400000-now];
+        if((get(key)?.count||0)>=max)return json({error:'Sharing rate limit reached'},429,{'Retry-After':String(Math.ceil(ms/1000))});
+        bump(key,ms);
+      } else if(kind==='mcp') {
         if((get('mcp:ip:'+ip)?.count||0)>=240 || (get('mcp:global')?.count||0)>=2400)return new Response(JSON.stringify({error:'Too many assistant requests'}),{status:429,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':'60'}});
         bump('mcp:ip:'+ip,60000);bump('mcp:global',60000);
       } else if(kind==='tts') {
@@ -101,18 +109,19 @@ export default {
       if(!limited.ok)return limited;
       const token=routeToken(request);
       if(!token)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
-      const headers=new Headers(request.headers);headers.delete('X-Family-Code');headers.delete('Cookie');headers.set('X-Internal-Family-Hash',token[2]);
+      const headers=new Headers(request.headers);headers.delete('X-Family-Code');headers.delete('Cookie');headers.set('X-Internal-Family-Hash',token[2]);headers.set('X-Internal-Sharing-IP',ip);
       headers.set('Authorization','Bearer '+token[1]);
       const internal=new URL(request.url);internal.pathname='/mcp';internal.search='';
       return env.FAMILY.get(env.FAMILY.idFromName('fam:'+token[2])).fetch(new Request(internal,new Request(request,{headers})));
     }
     if(!url.pathname.startsWith('/api/')) {
       const assetURL=new URL(request.url);
-      if(url.pathname.startsWith('/f/') || ['/privacy','/privacy/'].includes(url.pathname)) assetURL.pathname='/';
+      if(url.pathname.startsWith('/f/') || /^\/[sc]\//.test(url.pathname) || ['/privacy','/privacy/'].includes(url.pathname)) assetURL.pathname='/';
       const response=await env.ASSETS.fetch(new Request(assetURL,request));
       const headers=new Headers(response.headers);
       headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
       headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','no-referrer');
+      if(/^\/[sc]\//.test(url.pathname))headers.set('X-Robots-Tag','noindex, nofollow');
       if(url.pathname==='/sw.js') { headers.set('Cache-Control','no-cache, no-store, must-revalidate'); headers.set('Service-Worker-Allowed','/'); }
       return new Response(response.body,{status:response.status,headers});
     }
@@ -123,14 +132,23 @@ export default {
       return env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/stats'));
     }
     if(!env.SESSION_SECRET || env.SESSION_SECRET.length<32 || !env.IP_HASH_SALT || env.IP_HASH_SALT.length<32) return json({error:'Service secrets are not configured'},503);
-    if(request.method==='POST' && request.headers.get('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin write denied'},403);
+    if(['POST','PATCH','DELETE'].includes(request.method) && request.headers.get('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin write denied'},403);
     const ip=await sha256(env.IP_HASH_SALT+':'+(request.headers.get('CF-Connecting-IP') || 'local'));
     const registry=env.REGISTRY.get(env.REGISTRY.idFromName('registry'));
     const limit=kind=>registry.fetch(new Request('https://internal/limit',{method:'POST',body:JSON.stringify({kind,ip})}));
+    const publicShare=/^\/api\/(share|class|report)\/([^/]+)$/.exec(url.pathname);
+    if(publicShare) {
+      if(!validSlug(publicShare[2]))return json({error:'Shared content not found'},404,{'X-Robots-Tag':'noindex, nofollow'});
+      if(request.method!==(publicShare[1]==='report'?'POST':'GET'))return json({error:'Method not allowed'},405);
+      if(publicShare[1]==='report'&&!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return json({error:'Send JSON'},415);
+      const limited=await limit('sharing-read');if(!limited.ok)return limited;
+      try {return json(await shareRequest(env,publicShare[1]==='report'?'/report':'/read',{slug:publicShare[2],ip,...(publicShare[1]==='report'?{}:{kind:publicShare[1]})}),200,{'X-Robots-Tag':'noindex, nofollow'});}
+      catch(e){return json({error:e.status?e.message:'Sharing unavailable'},e.status||503,{'X-Robots-Tag':'noindex, nofollow'});}
+    }
     if(url.pathname==='/api/families' && request.method==='POST') {
       const limited=await limit('create');if(!limited.ok) return limited;
       const code=generateFamilyCode(), hash=await sha256(code);
-      const headers=new Headers(request.headers);headers.set('X-Internal-Family-Hash',hash);headers.set('X-Family-Code',code);
+      const headers=new Headers(request.headers);headers.set('X-Internal-Family-Hash',hash);headers.set('X-Family-Code',code);headers.set('X-Internal-Sharing-IP',ip);
       const internal=new URL(request.url);internal.pathname='/api/internal/create';
       const response=await env.FAMILY.get(env.FAMILY.idFromName('fam:'+hash)).fetch(new Request(internal,{method:'POST',headers,body:request.body,duplex:'half'}));
       if(!response.ok)return response;
@@ -142,7 +160,7 @@ export default {
     const code=normalizeCode(request.headers.get('X-Family-Code'));
     if(!validCode(code)) {await limit('lookup-failed');return json({error:'Family not found'},404);}
     const hash=await sha256(code), headers=new Headers(request.headers);
-    headers.set('X-Internal-Family-Hash',hash);headers.set('X-Family-Code',code);
+    headers.set('X-Internal-Family-Hash',hash);headers.set('X-Family-Code',code);headers.set('X-Internal-Sharing-IP',ip);
     const isTts=url.pathname==='/api/tts' && request.method==='GET';
     // Reuse the ordinary family lookup path; never trust a syntactically valid code alone.
     const lookupURL=new URL(request.url);if(isTts) lookupURL.pathname='/api/config';

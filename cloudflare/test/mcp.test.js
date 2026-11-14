@@ -51,7 +51,7 @@ test('Streamable HTTP initialization, negotiation, notifications, ping and proto
  assert.equal((await raw(token,'{')).body.error.code,-32700);
  assert.equal((await rpc(token,'ping',{}, {headers:{'MCP-Protocol-Version':'1900-01-01'}})).status,400);
  const tools=(await rpc(token,'tools/list')).body.result.tools;
- assert.deepEqual(tools.map(t=>t.name),['list_kids','list_spelling_lists','get_spelling_list','add_spelling_list','update_spelling_list','add_verse','get_progress']);
+ assert.deepEqual(tools.map(t=>t.name),['list_kids','list_spelling_lists','get_spelling_list','add_spelling_list','update_spelling_list','add_verse','get_shared_list','import_shared_list','get_progress']);
  for(const tool of tools)assert.equal(tool.inputSchema.additionalProperties,false);
 });
 
@@ -91,7 +91,7 @@ test('tools reuse list/verse validation, preserve history and return progress wi
 
 test('read-only scope hides writes and cannot execute them',async t=>{
  const {connection,rpc,call}=await setup(t);const {token}=await connection('read-only');
- assert.deepEqual((await rpc(token,'tools/list')).body.result.tools.map(t=>t.name),['list_kids','list_spelling_lists','get_spelling_list','get_progress']);
+ assert.deepEqual((await rpc(token,'tools/list')).body.result.tools.map(t=>t.name),['list_kids','list_spelling_lists','get_spelling_list','get_shared_list','get_progress']);
  const denied=await call(token,'add_verse',{kid:1,reference:'John 11:35',text:'Jesus wept.'});assert.equal(denied.body.result.isError,true);
  assert.equal(result(await call(token,'list_spelling_lists',{kid:1})).lists.length,1);
 });
