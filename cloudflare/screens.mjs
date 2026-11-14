@@ -75,6 +75,7 @@ async function typeInto(page,field,text) {
 async function settle(page) { await page.waitForTimeout(450); }
 async function shot(page,name,label,full=false) {
   await settle(page);
+  await page.evaluate(()=>{const t=document.getElementById('toast');if(t)t.style.display='none';});
   await page.screenshot({path:`${out}/${name}-${label}.png`,fullPage:full});
   console.log('saved',`${name}-${label}.png`);
 }

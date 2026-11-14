@@ -258,7 +258,6 @@ async function reload() {
 function header() {
   const actions = $("header-actions");
   actions.replaceChildren(...[
-    familyCode && !kid ? button("Family code", codeCard, "quiet small") : null,
     familyCode && !kid ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
     kid ? button([icon("back"), "Switch kid"], () => { kid = null; render(); }, "quiet small") : null,
     state.parent
@@ -448,7 +447,7 @@ function learnStep(round) {
   const answer = practiceField(input("learn-answer", "", {class: "answer", autocomplete: "off", inputmode: "text", autocapitalize: "off", autocorrect: "off", spellcheck: "false", enterkeyhint: "done", "aria-label": "Type the full word"}));
   const cue = el("p", {class: "cue", "aria-label": step.level === 100 ? "No letter clues" : "Letter clues: " + step.cue.replaceAll("_", "blank")});
   renderCue(cue, step.cue);
-  const feedback = el("p", {class: "feedback", role: "status", "aria-live": "polite"}, "Type the whole word, hidden letters too.");
+  const feedback = el("p", {class: "feedback", role: "status", "aria-live": "polite"});
   let done = false, comparisonTimer;
   const check = el("button", {type: "submit", form: "practice-form", class: "primary"}, "Check word");
   const continueButton = button("Continue", async () => {
@@ -494,9 +493,9 @@ function learnStep(round) {
         say(w.word);
       }
     } catch (err) {toast(err.message); check.disabled = false;}
-  }}, el("label", {for: "learn-answer"}, "Type the full word"), answer, feedback);
+  }}, el("label", {for: "learn-answer", class: "visually-hidden"}, "Type the full word"), answer, feedback);
   const actions = el("span", {class: "key-actions"}, check, continueButton);
-  const prompt = step.level === 0 ? "Listen and copy" : step.level === 100 ? "Now spell it from memory" : "Fill in the fading letters";
+  const prompt = step.level === 0 ? "Listen, then copy the word" : step.level === 100 ? "Now spell it from memory" : "Type the whole word, hidden letters too";
   app.append(
     practiceBand({ title: round.list?.title || "Learn", status: `Learn · word ${round.index + 1} of ${round.ws.length} · ${step.level}% hidden`,
       cells: roundCells(round.ws.length, round.index, round.ws.map((_, i) => i < round.index ? "done" : "")),
@@ -558,7 +557,7 @@ function spellingStep(round) {
     spellcheck: "false",
     "aria-label": "Type the spelling word",
   }));
-  const feedback = el("p", { class: "feedback", role: "status", "aria-live": "polite" }, "Ready when you are.");
+  const feedback = el("p", { class: "feedback", role: "status", "aria-live": "polite" });
   const check = el("button", { type: "submit", form: "practice-form", class: "primary" }, "Check word");
   const replay = () => say([w.word, w.sentence, w.word]);
   const band = () => practiceBand({ title: round.list?.title || (round.kind === "tricky" ? "Tricky words" : "Review round"), status: `Word ${round.index + 1} of ${round.ws.length}`,
@@ -619,7 +618,7 @@ function spellingStep(round) {
         }
       },
     },
-    el("label", { for: "answer" }, "Type the word you hear"),
+    el("label", { for: "answer", class: "visually-hidden" }, "Type the word you hear"),
     answer,
     feedback,
   );
@@ -744,9 +743,8 @@ async function versePractice(v, mode, level = 25) {
   const form = el("form", { id: "practice-form", class: "verse-form" });
   const submit = el("button", { type: "submit", form: "practice-form", class: "primary" }, "Check my work");
   if (mode === "blanks") {
-    const select = el("select", { id: "blank-level", onchange: (e) => versePractice(v, mode, Number(e.target.value)) },
-      [25, 50, 75, 100].map((n) => el("option", { value: n, selected: n === level }, `${n}% hidden`)));
-    form.append(field("Choose your challenge", select));
+    form.append(el("div", { class: "segments", role: "group", "aria-label": "How many words to hide" },
+      [25, 50, 75, 100].map((n) => { const b = button(`${n}%`, () => versePractice(v, mode, n), n === level ? "active" : "secondary"); b.setAttribute("aria-pressed", String(n === level)); b.setAttribute("aria-label", `${n}% hidden`); return b; })));
     indices = shuffled(ws.map((_, i) => i)).slice(0, Math.ceil((ws.length * level) / 100)).sort((a, b) => a - b);
     const blanks = el("div", { class: "blanks" });
     ws.forEach((w, i) => {
@@ -811,11 +809,10 @@ async function progressHome() {
     const p = await api("/api/progress?kid=" + k);
     if (kid?.id !== k || tab !== "Progress" || view !== viewVersion) return;
     $("progress-loading")?.remove();
-    app.append(el("div", { class: "stats" },
-      el("div", {}, el("span", { class: "metric" }, p.listsCompleted), el("span", {}, "Lists completed")),
-      el("div", {}, el("span", { class: "metric" }, p.streak), el("span", {}, p.streak === 1 ? "Day in a row" : "Days in a row"), el("small", {}, "Practice days use UTC.")),
-      el("div", {}, el("span", { class: "metric" }, p.tricky.length), el("span", {}, "Tricky words")),
-    ));
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    app.append(el("p", { class: "summary-line" },
+      `${plural(p.listsCompleted, "list", "lists")} completed · ${plural(p.streak, "day", "days")} in a row · ${plural(p.tricky.length, "tricky word", "tricky words")} to keep practicing.`,
+      el("small", {}, "Practice days use UTC.")));
     app.append(el("div", { class: "section" },
       el("div", { class: "section-title" }, el("h2", {}, "First-try spelling accuracy")),
       p.charts.length ? drawChart(p.charts) : el("p", {}, "Take a spelling test and your first-try accuracy for each list shows up here."),
