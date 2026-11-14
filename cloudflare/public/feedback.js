@@ -2,7 +2,7 @@
 // Ported from Incord (src/keyboard-feedback.ts, src/haptic-overlay.ts; MIT,
 // same author). No family data here; preferences stay in this browser only.
 const STORAGE = "family-practice-device";
-const DEFAULTS = { keySounds: false, haptics: false, keyboard: "auto" };
+const DEFAULTS = { keySounds: true, haptics: true, keyboard: "auto" };
 const SAMPLE = "/audio/interface-click-002.mp3"; // Kenney "Fine tick", CC0.
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORAGE) || "{}") }; } catch {}

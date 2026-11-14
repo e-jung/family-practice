@@ -31,4 +31,4 @@ Section tone is set with `data-tone` on `#app` (spelling, verses, progress, pare
 
 ## Motion and feedback
 - One authored moment: landing demo letters fade into marigold blanks. Everything else is ≤150ms state change; `prefers-reduced-motion` disables all of it.
-- Key sound (Kenney CC0 tick) and haptics are per-device, default off (Incord's defaults), never before a gesture. iOS haptics use a transparent native `<input switch>` overlay on every button.
+- Key sound (Kenney CC0 tick) and haptics are per-device, default on (kids like the click; Incord defaults off), never before a gesture. iOS haptics use a transparent native `<input switch>` overlay on every button.
