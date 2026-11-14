@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
 export const SCRIPT = 'family-practice';
-export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'lib/practice.js'];
+export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'cloudflare/sharing.js', 'lib/practice.js'];
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.mjs': 'application/javascript; charset=utf-8',
@@ -53,7 +53,7 @@ export async function buildPlan(root = ROOT) {
 }
 
 export function metadataFor(plan, jwt, migrationTag) {
-  if (migrationTag != null && migrationTag !== '' && !['v1', 'v2'].includes(migrationTag)) {
+  if (migrationTag != null && migrationTag !== '' && !['v1', 'v2', 'v3'].includes(migrationTag)) {
     throw new Error('Unexpected Durable Object migration tag; refusing to change migration history');
   }
   return {
@@ -64,12 +64,17 @@ export function metadataFor(plan, jwt, migrationTag) {
       { name: 'FAMILY', type: 'durable_object_namespace', class_name: 'FamilyDatabase' },
       { name: 'REGISTRY', type: 'durable_object_namespace', class_name: 'RegistryLimits' },
       { name: 'TTS_CACHE', type: 'durable_object_namespace', class_name: 'TtsCache' },
+      { name: 'SHARES', type: 'durable_object_namespace', class_name: 'ShareStore' },
       { name: 'ASSETS', type: 'assets' },
       { name: 'AI', type: 'ai' },
     ],
     keep_bindings: ['secret_text'],
     assets: { jwt, config: plan.config },
-    ...(migrationTag === 'v2' ? {} : { migrations: { old_tag: migrationTag || '', new_tag: 'v2', steps: [...(migrationTag === 'v1' ? [] : [{ new_sqlite_classes: ['FamilyDatabase', 'RegistryLimits'] }]), { new_sqlite_classes: ['TtsCache'] }] } }),
+    ...(migrationTag === 'v3' ? {} : { migrations: { old_tag: migrationTag || '', new_tag: 'v3', steps: [
+      ...(!migrationTag ? [{ new_sqlite_classes: ['FamilyDatabase', 'RegistryLimits'] }] : []),
+      ...(!migrationTag || migrationTag === 'v1' ? [{ new_sqlite_classes: ['TtsCache'] }] : []),
+      { new_sqlite_classes: ['ShareStore'] },
+    ] } }),
   };
 }
 
@@ -82,7 +87,9 @@ export async function deploy({ env = process.env, fetchImpl = globalThis.fetch, 
       manifest: plan.manifest,
       metadata_if_first_deployment: metadataFor(plan, '<completion JWT: obtained only during deployment>', null),
       metadata_if_live_v1: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v1'),
-      migration_check: 'Live deployment reads current settings; v1 applies v2; v2 omits migrations; unknown tags abort.',
+      metadata_if_live_v2: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v2'),
+      metadata_if_live_v3: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v3'),
+      migration_check: 'Live deployment reads current settings; v1 applies v2+v3; v2 applies v3; v3 omits migrations; unknown tags abort.',
       secrets: ['SESSION_SECRET', 'IP_HASH_SALT'],
       optional_secrets: ['OPS_TOKEN'],
       ops_warning: 'Without OPS_TOKEN, /api/ops/stats returns 404. Omitted OPS_TOKEN preserves any deployed value.',
@@ -164,7 +171,7 @@ export async function deploy({ env = process.env, fetchImpl = globalThis.fetch, 
     await api(`${scriptPath}/secrets`, { method: 'PUT', body: { name, text: env[name], type: 'secret_text' } });
   }
   log(`Deployment complete: ${SCRIPT}; ${Object.keys(plan.manifest).length} assets. Routes and Access unchanged.`);
-  return { script: SCRIPT, assets: Object.keys(plan.manifest).length, migrated: migrationTag !== 'v2' };
+  return { script: SCRIPT, assets: Object.keys(plan.manifest).length, migrated: migrationTag !== 'v3' };
 }
 
 export async function main(args = process.argv.slice(2)) {

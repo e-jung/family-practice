@@ -33,6 +33,14 @@ class_name = "TtsCache"
 tag = "v2"
 new_sqlite_classes = ["TtsCache"]
 
+[[durable_objects.bindings]]
+name = "SHARES"
+class_name = "ShareStore"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["ShareStore"]
+
 [observability]
 enabled = true
 head_sampling_rate = 1
