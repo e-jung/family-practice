@@ -9,7 +9,7 @@ export function fadeSteps(word, random = Math.random) {
     const j = Math.floor(random() * (i + 1));
     [order[i], order[j]] = [order[j], order[i]];
   }
-  return [0, 25, 50, 75, 100].map(level => {
+  return [0, 50, 75, 100].map(level => {
     const hidden = new Set(level === 100 ? [...order, 0] : order.slice(0, Math.min(order.length, Math.ceil(letters.length * level / 100))));
     return {level, cue: letters.map((letter, i) => hidden.has(i) ? '_' : letter).join(' ')};
   });

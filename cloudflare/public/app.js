@@ -388,19 +388,26 @@ function spellingHome() {
     app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "No spelling list yet")),
       el("p", {}, "A parent can add this week’s words in Parent mode. Paste one word per line, with an optional sentence.")));
   if (active[0]) app.append(listCard(active[0]));
-  app.append(el("div", { class: "section" },
-    el("div", { class: "section-title" }, el("h2", {}, "Tricky words"),
-      button("Review tricky words", async () => {
-        const ws = await api("/api/tricky?kid=" + kid.id);
-        if (!ws.length) { toast("No tricky words yet. Keep growing!"); return; }
-        startSpelling(ws.map((w) => ({ ...w, id: w.word_id })), null, "tricky");
-      }, "secondary small")),
-    el("p", { class: "muted" }, "Words you’ve missed come back here. Spell one right on the first try three times and it graduates."),
-  ));
+  const review = el("section", {class: "section", "aria-label": "Spaced review"},
+    el("div", {class: "section-title"}, el("h2", {}, "Review")), el("p", {}, "Checking your word bank…"));
+  app.append(review);
+  const view = viewVersion, id = kid.id;
+  api("/api/review?kid=" + id).then(bank => {
+    if (view !== viewVersion || kid?.id !== id) return;
+    review.replaceChildren(el("div", {class: "section-title"}, el("h2", {}, "Review")),
+      bank.due.length ? el("div", {class: "review-entry"},
+        el("div", {}, el("h3", {}, `${bank.dueCount ?? bank.due.length} words due today`),
+          el("p", {class: "muted"}, "A few familiar words, just when you need them. Up to 15 in a round.")),
+        button("Start review", () => startSpelling(bank.due.map(w => ({...w, id: w.word_id})), null, "review"), "primary"))
+        : el("p", {}, bank.nextDue ? "Nothing due — next review " + reviewDay(bank.nextDue) : "Nothing due — learn or test some words to begin."));
+  }).catch(err => { if (view === viewVersion) review.replaceChildren(el("h2", {}, "Review"), el("p", {}, err.message), button("Try again", render, "secondary")); });
   if (active.length > 1)
     app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "Past weeks")), el("div", { class: "rows" }, active.slice(1).map(listRow))));
   if (state.parent && state.lists.some((l) => l.archived))
     app.append(el("details", {}, el("summary", {}, "Archived lists"), el("div", { class: "rows" }, state.lists.filter((l) => l.archived).map(listRow))));
+}
+function reviewDay(day) {
+  return new Date(day + "T12:00:00Z").toLocaleDateString("en-US", {weekday: "long", timeZone: "UTC"});
 }
 function wordSheet(l) {
   shell();
@@ -440,6 +447,24 @@ function renderCue(node, text) {
   // Size the letters so even a long word stays on one line.
   node.style.setProperty("--n", Math.max(6, text.split(" ").length));
   node.replaceChildren(...text.split(" ").map((c) => el("span", { class: c === "_" ? "blank" : "" }, c === "_" ? " " : c)));
+}
+function learnStageIndicator(learning) {
+  const labels = learning.steps.length === 2 ? ["Copy", "Recall"] : ["Copy", "Fade", "Fade more", "Recall"];
+  return el("div", {class: "learn-stage-progress"},
+    el("p", {class: "stage-caption"}, `Stage ${learning.index + 1} of ${labels.length} · ${labels[learning.index]}`),
+    el("ol", {class: "learn-stages", "aria-label": "Stages for this word"}, labels.map((label, i) =>
+      el("li", {class: i < learning.index ? "complete" : i === learning.index ? "current" : "", "aria-current": i === learning.index ? "step" : null},
+        el("span", {class: "stage-number", "aria-hidden": "true"}, i < learning.index ? "✓" : i + 1),
+        el("span", {}, label), el("span", {class: "visually-hidden"}, i < learning.index ? " · complete" : i === learning.index ? " · you are here" : " · next")))));
+}
+async function learnToTest(round) {
+  const view = viewVersion;
+  // Record every unlearned word we pass over, without turning it into a win.
+  for (const w of round.ws.slice(round.index + (round.learning.learned ? 1 : 0))) {
+    await api("/api/attempts", {session_id: round.session, word_id: w.id, typed: "", mode: "learn", step: "skip"});
+    if (view !== viewVersion) return;
+  }
+  startSpelling(round.ws, round.list);
 }
 function learnStep(round) {
   shell("practice", "spelling");
@@ -497,13 +522,22 @@ function learnStep(round) {
   const actions = el("span", {class: "key-actions"}, check, continueButton);
   const prompt = step.level === 0 ? "Listen, then copy the word" : step.level === 100 ? "Now spell it from memory" : "Type the whole word, hidden letters too";
   app.append(
-    practiceBand({ title: round.list?.title || "Learn", status: `Learn · word ${round.index + 1} of ${round.ws.length} · ${step.level}% hidden`,
+    practiceBand({ title: round.list?.title || "Learn", status: `Learn · word ${round.index + 1} of ${round.ws.length}`,
       cells: roundCells(round.ws.length, round.index, round.ws.map((_, i) => i < round.index ? "done" : "")),
       exit: exitButton("End learning", () => {if (confirm("Leave learning? Your attempts will still be saved.")) render();}) }),
     el("section", {class: "desk"},
-      el("h2", {}, prompt), cue,
+      el("h2", {}, prompt), learnStageIndicator(round.learning), cue,
       el("div", {class: "listen"}, button([icon("speaker"), "Say again"], () => say([w.word, w.sentence, w.word]), "secondary")),
-      form));
+      form,
+      el("div", {class: "learn-shortcuts"},
+        step.level !== 100 ? button("Skip to recall", async () => {
+          if (done) return;
+          await api("/api/attempts", {session_id: round.session, word_id: w.id, typed: "", mode: "learn", step: "skip"});
+          if (view !== viewVersion) return;
+          round.learning = {...round.learning, index: round.learning.steps.length - 1};
+          learnStep(round);
+        }, "secondary") : null,
+        button("I know these — start the test", () => learnToTest(round), "quiet"))));
   if (!dockKeyboard({target: () => answer, action: actions})) form.append(actions);
   focus(answer);
   say([w.word, w.sentence, w.word]);
@@ -525,9 +559,9 @@ async function startSpelling(ws, list = null, kind = "spelling") {
   shell("practice", "spelling");
   const shuffle = input("shuffle", "", { type: "checkbox", checked: true });
   const title = list?.title || (kind === "tricky" ? "Tricky words" : "Review round");
-  app.append(practiceBand({ title, status: (kind === "tricky" ? "Tricky words" : "Spelling test") + " · " + ws.length + " words", cells: roundCells(ws.length, -1), exit: exitButton("Back", render) }),
+  app.append(practiceBand({ title, status: (kind === "review" ? "Review" : kind === "tricky" ? "Tricky words" : "Spelling test") + " · " + ws.length + " words", cells: roundCells(ws.length, -1), exit: exitButton("Back", render) }),
     el("section", { class: "desk intro" },
-      el("h2", {}, kind === "tricky" ? "Your tricky words" : "Spelling test"),
+      el("h2", {}, kind === "review" ? "Review" : kind === "tricky" ? "Your tricky words" : "Spelling test"),
       el("p", {}, `${ws.length} words. You’ll hear the word, a sentence, then the word again. You get one retry.`),
       el("label", { class: "inline" }, shuffle, "Shuffle the words"),
       el("div", { class: "row form-actions" },
@@ -801,6 +835,20 @@ async function versePractice(v, mode, level = 25) {
   if (!keyboard) form.append(submit);
   focus(current);
 }
+function wordBankView(bank) {
+  if (!bank) return el("p", {}, "Take a test or learn a word to start your word bank.");
+  const rows = (items, empty) => items.length ? el("ul", {class: "rows word-bank-rows"}, items.slice(0, 8).map(w =>
+    el("li", {}, el("strong", {}, w.word || w.display_word),
+      el("span", {class: "meta"}, state.parent ? `Box ${w.box} · due ${niceDate(w.due_date || w.due)} · ${w.misses} misses` : `${w.misses} ${w.misses === 1 ? "miss" : "misses"}`)))) : el("p", {class: "muted"}, empty);
+  return el("div", {},
+    el("dl", {class: "bank-counts"}, [["Learning", bank.counts.learning, "Boxes 1–2"], ["Getting it", bank.counts.gettingIt, "Boxes 3–4"], ["Mastered", bank.counts.mastered, "Boxes 5–6"]].map(([label, n, boxes]) =>
+      el("div", {}, el("dt", {}, label), el("dd", {}, n), el("small", {}, boxes)))),
+    el("p", {class: "muted bank-explainer"}, "Right on the first try? Your word moves up. More time between reviews as it grows: 1, 2, 4, 7, 14, then 30 days."),
+    el("h3", {}, "A little extra practice"), rows(bank.struggling, "No struggling words right now."),
+    el("h3", {}, "Due soon"), rows(bank.dueSoon, "Nothing coming up yet."),
+    state.parent && bank.words.length ? el("details", {}, el("summary", {}, "Parent detail · all words"),
+      table(["Word", "Box", "Due (UTC)"], bank.words.map(w => [w.word || w.display_word, w.box, w.due_date || w.due]))) : null);
+}
 async function progressHome() {
   const k = kid.id,
     view = viewVersion;
@@ -820,13 +868,11 @@ async function progressHome() {
     ));
     if (state.parent && p.learnAttempts?.length) app.append(el("details", {},
       el("summary", {}, "Parent detail · recent Learn attempts"),
-      table(["Word", "Letters hidden", "Typed", "Correct"], p.learnAttempts.slice(0, 100).map(a => [a.word, a.step + "%", a.typed, a.correct ? "Yes" : "Compare"]))));
+      table(["Word", "Letters hidden", "Typed", "Correct"], p.learnAttempts.slice(0, 100).map(a => [a.word, a.step === "skip" ? "Skipped" : a.step + "%", a.typed, a.correct ? "Yes" : "Compare"]))));
     app.append(el("div", { class: "two" },
       el("div", { class: "section" },
-        el("div", { class: "section-title" }, el("h2", {}, "Words to keep practicing")),
-        p.tricky.length
-          ? el("ul", { class: "rows" }, p.tricky.slice(0, 12).map((w) => el("li", {}, el("strong", {}, w.word), el("span", { class: "meta" }, `${w.misses} ${w.misses === 1 ? "miss" : "misses"} · ${w.streak} of 3 first-try wins`))))
-          : el("p", {}, "No tricky words right now!"),
+        el("div", { class: "section-title" }, el("h2", {}, "Word bank")),
+        wordBankView(p.wordBank),
       ),
       el("div", { class: "section" },
         el("div", { class: "section-title" }, el("h2", {}, "Verse garden")),
@@ -857,7 +903,7 @@ async function progressHome() {
               .slice(0, 100)
               .map((a) => [
                 new Date(a.created_at).toLocaleString(),
-                a.mode === "learn" ? `Learn · ${a.step}% hidden` : "Test",
+                a.mode === "learn" ? a.step === "skip" ? "Learn · skipped" : `Learn · ${a.step}% hidden` : "Test",
                 a.word,
                 a.typed,
                 a.correct ? "Yes" : "Not yet",

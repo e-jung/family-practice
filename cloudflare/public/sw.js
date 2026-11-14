@@ -1,5 +1,5 @@
 /* Bump VERSION for each shell release. Never cache family URLs or API data on disk. */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const PREFIX = 'family-practice-shell-';
 const SHELL_CACHE = PREFIX + VERSION;
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/learn.js', '/pwa.js', '/feedback.js', '/keyboard.js', '/icons.js', '/fonts/practice-reader-regular.woff2', '/fonts/practice-reader-bold.woff2', '/fonts/barlow-condensed-semibold.woff2', '/fonts/barlow-condensed-bold.woff2', '/audio/interface-click-002.mp3', '/manifest.webmanifest', '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png'];

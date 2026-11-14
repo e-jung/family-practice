@@ -345,3 +345,28 @@ details:not(:has(.danger)) > summary { color: inherit; }
 @media (min-width: 761px) and (min-height: 700px) { .desk { padding-top: 10vh; } }
 .segments button { white-space: nowrap; padding-inline: 6px; }
 .summary-line { max-width: none; }
+
+/* Within-word stages are a numbered path, distinct from the band's word squares. */
+.learn-stage-progress { width: min(490px, 100%); }
+.desk .stage-caption { margin: 0 0 8px; font: 600 1.05rem/1.2 var(--display); }
+.learn-stages { display: flex; list-style: none; padding: 0; margin: 0; gap: 6px; }
+.learn-stages li { flex: 1 1 0; min-width: 0; border: 1.5px solid var(--rule-strong); border-radius: 6px; padding: 7px 2px; display: flex; align-items: center; justify-content: center; gap: 5px; font: 600 1rem/1.1 var(--display); }
+.learn-stages .complete { background: var(--cobalt); border-color: var(--cobalt); color: var(--stock); }
+.learn-stages .current { background: var(--marigold); border: 2px solid var(--ink); color: var(--ink); }
+.stage-number { font-size: .9rem; }
+.learn-shortcuts { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.learn-shortcuts button { min-height: 44px; font-size: 1rem; }
+.review-entry { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.review-entry p { margin: 0; }
+.bank-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 16px; border-block: 1px solid var(--rule-strong); }
+.bank-counts > div { padding: 12px 6px; border-inline-end: 1px solid var(--rule); }
+.bank-counts > div:last-child { border-inline-end: 0; }
+.bank-counts dt { font: 600 1.1rem/1.2 var(--display); }
+.bank-counts dd { margin: 3px 0; font: 700 2rem/1.2 var(--display); color: var(--leaf); }
+.bank-counts small { font-size: .75rem; }
+.bank-explainer { font-size: .9rem; }
+.word-bank-rows { margin-bottom: 20px; }
+@media (max-width: 520px) {
+  .learn-stages li { padding: 7px 1px; gap: 3px; font-size: .9rem; }
+  .desk:has(.learn-stages) { gap: 8px; padding-top: 16px; }
+}

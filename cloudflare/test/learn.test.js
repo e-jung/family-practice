@@ -5,7 +5,7 @@ const seeded = seed => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 429
 test('fade cues are deterministic, nested, preserve first letter until audio-only', () => {
   const steps = fadeSteps('friend', seeded(42));
   assert.deepEqual(steps, fadeSteps('friend', seeded(42)));
-  assert.deepEqual(steps.map(s => s.level), [0,25,50,75,100]);
+  assert.deepEqual(steps.map(s => s.level), [0,50,75,100]);
   let prior = [];
   for (const step of steps) {
     const chars = step.cue.split(' '), hidden = chars.flatMap((c,i) => c === '_' ? [i] : []);
@@ -33,8 +33,8 @@ test('learn requires a correct audio-only attempt and compares one easier clue a
   state = advanceLearn(state, false);
   assert.equal(state.index, 1);
   assert.equal(state.learned, false);
-  for (let i=0; i<3; i++) state = advanceLearn(state, true);
-  assert.equal(state.index, 4);
+  for (let i=0; i<2; i++) state = advanceLearn(state, true);
+  assert.equal(state.index, 3);
   assert.equal(state.learned, false);
   state = advanceLearn(state, true);
   assert.equal(state.learned, true);
