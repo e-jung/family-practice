@@ -158,17 +158,23 @@ button.kid:hover { border-color: var(--ink); filter: none; }
 
 /* Practice desk: the child's focused screen. */
 body.practicing > header { display: none; }
-/* In practice only the voice status stays, as one quiet line under the desk. */
-body.practicing > footer { border: 0; padding: 6px 0 10px; min-height: 34px; font-size: .8rem; }
-body.practicing > footer > :not(#voice-status) { display: none; }
-body.practicing main { min-height: calc(100dvh - 34px); padding-bottom: 0; grid-template-rows: auto 1fr auto; }
-.practice-band { background: var(--tone); color: var(--on-tone); grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; padding: 10px 0 14px; }
-.practice-band > div { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "exit cells" "title status"; align-items: center; gap: 2px 14px; }
+/* Voice diagnostics belong to parent settings, never the child's desk. */
+#voice-status { display: none; }
+body:has(#voice) #voice-status { display: inline; }
+body.practicing { padding-top: 0; }
+body.practicing > footer { display: none; }
+body.practicing main { min-height: 100dvh; padding-bottom: 0; grid-template-rows: auto 1fr auto; }
+/* Keep the opaque safe-area band above scrolling content in installed iOS. */
+.practice-band { background: var(--tone); color: var(--on-tone); grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; padding: calc(10px + var(--practice-safe-top, env(safe-area-inset-top, 0px))) 0 14px; position: sticky; top: 0; z-index: 3; align-self: start; }
+.practice-band > div { grid-column: 2; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "exit exit" "title status" "cells cells"; align-items: center; gap: 6px 14px; }
 .practice-band .title { grid-area: title; font: 700 1.35rem/1.15 var(--display); text-transform: uppercase; letter-spacing: .02em; overflow-wrap: anywhere; }
 .practice-band .status { grid-area: status; font: 600 1.05rem/1.2 var(--display); letter-spacing: .03em; color: #ffffffe0; text-align: right; }
-.practice-band .chart-cells { grid-area: cells; justify-content: end; }
-.practice-band button.quiet { grid-area: exit; justify-self: start; padding-inline: 2px 10px; text-decoration: none; font-size: 1.05rem; min-height: 44px; }
-@media (max-width: 520px) { .practice-band > div { grid-template-areas: "exit cells" "title title" "status status"; } .practice-band .status { text-align: left; } }
+.practice-band .chart-cells { grid-area: cells; min-width: 0; max-width: 100%; }
+.practice-band .chart-cells i { flex: none; }
+.practice-band .chart-cells.compact { display: grid; grid-template-columns: repeat(var(--word-count), minmax(0, 1fr)); width: min(600px, 100%); gap: 3px; }
+.practice-band .chart-cells.compact i { width: 100%; min-width: 0; height: 8px; border-radius: 1px; border-width: 1px; }
+.practice-band button.quiet { grid-area: exit; justify-self: start; flex: none; white-space: nowrap; padding-inline: 2px 10px; text-decoration: none; font-size: 1.05rem; min-height: 44px; }
+@media (max-width: 520px) { .practice-band > div { grid-template-areas: "exit exit" "title title" "status status" "cells cells"; } .practice-band .status { text-align: left; } }
 .desk { width: min(760px, 100%); margin: 0 auto; padding: 22px 0 18px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
 .desk > h2 { font-size: 1.5rem; font-weight: 600; margin: 0; }
 .desk p { margin-inline: auto; }

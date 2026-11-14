@@ -61,7 +61,7 @@ async function learnList(page) {
   if(await shuffle.count())await shuffle.uncheck();
   await page.getByRole('button',{name:'Start learning',exact:true}).click();
   for(const word of ['friend','light','kind','cat']) {
-    const stages=word.length<=3?[0,100]:[0,50,75,100];
+    const stages=word.length<=3?[0,100]:word.length<=5?[0,50,100]:[0,50,75,100];
     for(const stage of stages) {
       const answer=page.getByRole('textbox',{name:'Type the full word',exact:true});
       await answer.waitFor();
@@ -81,13 +81,10 @@ async function learnList(page) {
       if(word === 'friend' && stage === 50) {
         await answer.fill('frend');
         await page.getByRole('button',{name:'Check word'}).click();
-        await page.getByText('Compare: friend. Next, try one easier clue.',{exact:true}).waitFor();
+        await page.getByText('Compare: friend. Then retry this stage.',{exact:true}).waitFor();
         await page.getByRole('button',{name:'Continue',exact:true}).click();
-        await page.getByText('Stage 1 of 4 · Copy',{exact:true}).waitFor();
-        await page.getByRole('textbox',{name:'Type the full word',exact:true}).fill(word);
-        await page.getByRole('button',{name:'Check word'}).click();
-        await page.getByRole('button',{name:'Continue',exact:true}).click();
-        learnSteps += 2;
+        await page.getByText('Stage 2 of 4 · Fade',{exact:true}).waitFor();
+        learnSteps++;
       }
       await page.getByRole('textbox',{name:'Type the full word',exact:true}).fill(word);
       await page.getByRole('button',{name:'Check word'}).click();
@@ -109,7 +106,7 @@ async function learnList(page) {
   await page.getByRole('button',{name:'Check word'}).click();
   await page.getByText('Learned! You spelled it with no clues.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Continue',exact:true}).click();
-  await page.getByText('Stage 1 of 4 · Copy',{exact:true}).waitFor();
+  await page.getByText('Stage 1 of 3 · Copy',{exact:true}).waitFor();
   const skipResponse=page.waitForResponse(r=>r.request().method()==='POST' && r.url().endsWith('/api/attempts') && r.request().postDataJSON().step==='skip');
   await page.getByRole('button',{name:'I know these — start the test',exact:true}).click();
   assert.equal((await skipResponse).ok(),true,'Learn-to-Test skip is saved');
@@ -239,7 +236,8 @@ try {
       assert.equal(requests.filter(t=>t==='friend. f, r, i, e, n, d. friend.').length,1,'letters use a single cloud request');
     } else {
       await page.waitForFunction(()=>window.testSpoken.length>=3);
-      await page.getByText('Device voice active · cloud voice temporarily unavailable',{exact:true}).waitFor();
+      assert.equal(await page.locator('#voice-status').textContent(),'Device voice active · cloud voice temporarily unavailable');
+      assert.equal(await page.locator('#voice-status').isVisible(),false,'voice diagnostics never show on the child practice screen');
       await oskType(page,page.getByLabel('Type the spelling word'),'friends');
       await page.locator('[data-keyboard]').getByRole('button',{name:'Delete'}).tap();
       assert.equal(await page.getByLabel('Type the spelling word').inputValue(),'friend','on-screen Delete removes one letter');

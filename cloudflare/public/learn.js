@@ -9,18 +9,19 @@ export function fadeSteps(word, random = Math.random) {
     const j = Math.floor(random() * (i + 1));
     [order[i], order[j]] = [order[j], order[i]];
   }
-  return [0, 50, 75, 100].map(level => {
+  return (letters.length <= 5 ? [0, 50, 100] : [0, 50, 75, 100]).map(level => {
     const hidden = new Set(level === 100 ? [...order, 0] : order.slice(0, Math.min(order.length, Math.ceil(letters.length * level / 100))));
     return {level, cue: letters.map((letter, i) => hidden.has(i) ? '_' : letter).join(' ')};
   });
 }
 export function newLearnWord(word, random = Math.random) {
-  return {steps: fadeSteps(word, random), index: 0, completed: [], learned: false, comparisons: 0};
+  return {steps: fadeSteps(word, random), index: 0, completed: [], learned: false, comparisons: 0, missed: []};
 }
 export function advanceLearn(state, correct) {
   if (state.learned) return state;
-  if (!correct) return {...state, index: Math.max(0, state.index - 1), comparisons: state.comparisons + 1};
+  if (!correct) return {...state, missed: [...new Set([...(state.missed || []), state.index])], comparisons: state.comparisons + 1};
   const completed = [...new Set([...(state.completed || []), state.index])];
   if (state.index === state.steps.length - 1) return {...state, completed, learned: true};
-  return {...state, completed, index: state.index + 1};
+  const fastTrack = state.steps[state.index].level > 0 && !(state.missed || []).includes(state.index);
+  return {...state, completed, index: fastTrack ? state.steps.length - 1 : state.index + 1};
 }

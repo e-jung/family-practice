@@ -120,13 +120,13 @@ try {
     if(await shuffle.count())await shuffle.uncheck();
     await page.getByRole('button',{name:'Start learning'}).click();
     const learn=page.getByRole('textbox',{name:'Type the full word'});
-    for(let stage=0;stage<2;stage++) {
+    for(let stage=0;stage<1;stage++) {
       await learn.waitFor();
       await learn.fill('beautiful');
       await page.getByRole('button',{name:'Check word'}).click();
       await page.getByRole('button',{name:'Continue',exact:true}).click();
     }
-    await page.getByText(/50% hidden/).waitFor();
+    await page.getByText('Stage 2 of 4 · Fade',{exact:true}).waitFor();
     await typeInto(page,learn,'beau');
     await shot(page,'07-learn-fade',label);
     await page.getByRole('button',{name:'End learning'}).click();

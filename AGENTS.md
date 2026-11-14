@@ -30,7 +30,7 @@ Keep both builds working and tested. `lib/practice.js` is shared answer checking
 - `cloudflare/worker.js` routes assets and APIs. `cloudflare/core.js` holds per-family storage and practice API logic.
 - One `FamilyDatabase` Durable Object per hashed Family Code; never log raw codes or use them as object names.
 - Optional private `GET /api/ops/stats` uses an independent `OPS_TOKEN` bearer and returns only numeric aggregates (no identifiers/content). Family reports register families lazily; never claim dormant historical families are counted. See deploy.md for response/coverage.
-- Learn sessions use kind `learn`, attempt mode `learn`, and stored `step` 0/50/75/100 (legacy 25 and request `level` alias accepted); short words use 0/100. A `skip` step records shortcuts without correct/first-try credit. Learn history is separate from test scores and completed test lists; learning counts toward practice streaks. Old attempts migrate to test/0.
+- Learn sessions use kind `learn`, attempt mode `learn`, and stored `step` 0/50/75/100 (legacy 25 and request `level` alias accepted); 1–3 letters use 0/100, 4–5 use 0/50/100, and 6+ use all four stages. Misses compare then retry the same stage; first-try Fade success jumps to Recall, which alone completes learning. A `skip` step records shortcuts without correct/first-try credit. Learn history is separate from test scores and completed test lists; learning counts toward practice streaks. Old attempts migrate to test/0.
 - Worker spelling Review uses a per-kid, normalized-word Leitner bank (boxes 1–6; 1/2/4/7/14/30 UTC days), persisted inside each family SQLite DO and backfilled deterministically from attempts. Review sessions use kind `review`, test-mode attempts, max 15 due words, and the same one-retry voice/keyboard flow. Pure scheduling lives in `lib/practice.js`; the LAN build retains its existing tricky-word flow. No new binding or deployed migration is needed.
 - `RegistryLimits` enforces family creation and unknown-code throttling using salted IP hashes. PIN throttling lives inside each family object.
 - Parent cookies are HMAC-signed using `SESSION_SECRET`, family-bound, and invalidated by PIN changes. PIN hashes use salted PBKDF2.
@@ -50,7 +50,7 @@ Keep both builds working and tested. `lib/practice.js` is shared answer checking
 - Node 24+, zero npm runtime dependencies, vanilla JS, no build step. Preserve this unless a clear need warrants review.
 - Run `node --test` before deployment or merging behavior changes. Use temporary test data and fake speech services, not real family data.
 - `node cloudflare/deploy.mjs --dry-run` prepares a deployment with zero network calls.
-- `cloudflare/smoke.mjs` checks local Wrangler APIs; `cloudflare/ui-smoke.mjs` checks local browser journeys. Keep localhost guards and Wrangler telemetry disabled.
+- `cloudflare/smoke.mjs` checks local Wrangler APIs; `cloudflare/ui-smoke.mjs` checks local browser journeys. `cloudflare/practice-layout-smoke.mjs <dir>` checks 16/25/40-word headers at 390×844, 360×740 and desktop, simulates a 47px top safe area, verifies Fade fast-track, and captures Test/long-word Fade/4-letter Fade screens. It uses the same optional Playwright setup and disposable localhost Worker as UI smoke; actual iOS standalone still needs a device check. Keep localhost guards and Wrangler telemetry disabled.
 - Use text nodes for user data, parameterized SQL, origin/JSON checks, and bounded inputs. Do not weaken family isolation or parent authorization.
 
 ## Deployment

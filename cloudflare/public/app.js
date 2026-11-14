@@ -290,12 +290,14 @@ function shell(mode = "", tone = "") {
 }
 // The band on every practice screen: way out, where you are, and one cell per word.
 function practiceBand({ title, status, cells = [], exit }) {
+  const chart = cells.length ? el("span", {class: "chart-cells" + (cells.length > 12 ? " compact" : ""), "aria-hidden": "true"}, cells.map(c => el("i", {class: c}))) : null;
+  chart?.style.setProperty("--word-count", cells.length);
   return el("div", { class: "practice-band" },
     el("div", {},
       exit,
       el("span", { class: "title" }, title),
       el("span", { class: "status" }, status),
-      cells.length ? el("span", { class: "chart-cells", "aria-hidden": "true" }, cells.map((c) => el("i", { class: c }))) : null,
+      chart,
     ));
 }
 const exitButton = (label, fn) => button([icon("close"), label], fn, "quiet");
@@ -431,7 +433,7 @@ function startLearning(ws, list) {
   app.append(practiceBand({ title: list.title, status: "Learn · " + ws.length + " words", cells: roundCells(ws.length, -1), exit: exitButton("Back", render) }),
     el("section", { class: "desk intro" },
       el("h2", {}, "Learn the words first"),
-      el("p", {}, "Listen and copy each word. Then a few letters fade, and you type the whole word again. If you miss, compare it and try an easier clue."),
+      el("p", {}, "Listen and copy each word. Then a few letters fade, and you type the whole word again. If you miss, compare it and retry the same stage."),
       el("small", {}, "Based on Copy–Cover–Compare and vanishing-cue practice. Learn rounds don’t count toward test scores."),
       el("div", { class: "row form-actions" },
         button("Start learning", async () => {
@@ -449,7 +451,7 @@ function renderCue(node, text) {
   node.replaceChildren(...text.split(" ").map((c) => el("span", { class: c === "_" ? "blank" : "" }, c === "_" ? " " : c)));
 }
 function learnStageIndicator(learning) {
-  const labels = learning.steps.length === 2 ? ["Copy", "Recall"] : ["Copy", "Fade", "Fade more", "Recall"];
+  const labels = learning.steps.map(step => ({0: "Copy", 50: "Fade", 75: "Fade more", 100: "Recall"})[step.level]);
   return el("div", {class: "learn-stage-progress"},
     el("p", {class: "stage-caption"}, `Stage ${learning.index + 1} of ${labels.length} · ${labels[learning.index]}`),
     el("ol", {class: "learn-stages", "aria-label": "Stages for this word"}, labels.map((label, i) =>
@@ -507,7 +509,7 @@ function learnStep(round) {
         round.comparisons++;
         renderCue(cue, [...w.word].join(" "));
         cue.classList.add("reveal");
-        feedback.textContent = "Compare: " + w.word + ". Next, try one easier clue.";
+        feedback.textContent = "Compare: " + w.word + ". Then retry this stage.";
         feedback.className = "feedback retry";
         continueButton.disabled = true;
         comparisonTimer = setTimeout(() => {
