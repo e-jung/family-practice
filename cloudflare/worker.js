@@ -1,3 +1,6 @@
+import {scheduledEmails} from './notifications.js';
+import {routeAuth,authConfig,accountSession,accountRequest,linkFamily} from './accounts.js';
+export {AccountStore} from './accounts.js';
 import {shareRequest,validSlug} from './sharing.js';
 export {ShareStore} from './sharing.js';
 import {routeToken} from './mcp.js';
@@ -7,14 +10,28 @@ import { createHandler } from './core.js';
 import {sha256,generateFamilyCode,normalizeCode,validCode,equalSecret} from './auth.js';
 const json=(data,status=200,extra={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...extra}});
 export class FamilyDatabase {
-  constructor(ctx,env) { this.ctx=ctx;this.env={...env};this.handler=createHandler(ctx,this.env); }
+  constructor(ctx,env) { this.ctx=ctx;this.env={...env};this.handler=createHandler(ctx,this.env);this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS linked_parents(hash TEXT PRIMARY KEY,masked TEXT NOT NULL)'); }
   fetch(request) {
     return this.ctx.blockConcurrencyWhile(async()=> {
       this.env.familyIdHash=request.headers.get('X-Internal-Family-Hash');
       this.env.familyCode=request.headers.get('X-Family-Code');
       this.env.sharingIpHash=request.headers.get('X-Internal-Sharing-IP');
+      this.env.accountParent=request.headers.get('X-Internal-Account-Parent')==='1';
+      const sql=this.ctx.storage.sql, path=new URL(request.url).pathname;
+      if(path.startsWith('/api/internal/account/')) {
+        const family=[...sql.exec('SELECT * FROM family WHERE id=1')][0];if(!family)return json({error:'Family not found'},404);
+        const b=await request.json(),op=path.split('/').pop();
+        if(op==='link'){if(![...sql.exec('SELECT hash FROM linked_parents WHERE hash=?',b.hash)].length&&[...sql.exec('SELECT hash FROM linked_parents')].length>=4)return json({error:'At most four parents per family'},409);sql.exec('INSERT OR REPLACE INTO linked_parents VALUES(?,?)',b.hash,b.masked);return json({name:family.name});}
+        if(op==='unlink'){sql.exec('DELETE FROM linked_parents WHERE hash=?',b.hash);return json({ok:true});}
+        if(op==='follows')return json({follows:[...sql.exec('SELECT slug FROM class_follows ORDER BY slug')]});
+        if(op==='parents')return json({parents:[...sql.exec('SELECT hash,masked FROM linked_parents ORDER BY masked')]});
+        if(op==='digest')return json({name:family.name,kids:[...sql.exec('SELECT id,name FROM kids WHERE archived=0')].map(k=>({...k,lists:[...sql.exec('SELECT DISTINCT l.title FROM lists l JOIN attempts a ON a.list_id=l.id WHERE a.kid_id=? AND a.created_at>=?',k.id,new Date(Date.now()-7*86400000).toISOString())].map(x=>x.title),attempts:[...sql.exec("SELECT correct,first_try,word FROM attempts WHERE kid_id=? AND created_at>=? AND mode='test'",k.id,new Date(Date.now()-7*86400000).toISOString())],reviewDue:[...sql.exec('SELECT COUNT(*) n FROM word_bank WHERE kid_id=? AND due<=?',k.id,new Date().toISOString().slice(0,10))][0].n,verseAttempts:[...sql.exec('SELECT accuracy,created_at FROM verse_attempts WHERE kid_id=? ORDER BY created_at DESC LIMIT 20',k.id)]}))});
+        return json({error:'Not found'},404);
+      }
+      const oldParents=path==='/api/admin/delete-family'?[...sql.exec('SELECT hash FROM linked_parents')]:[];
       const response=await this.handler(request);
-      const sql=this.ctx.storage.sql, day=new Date().toISOString().slice(0,10);
+      if(response.ok&&oldParents.length){for(const p of oldParents)await accountRequest(this.env,'/unlink',{hash:p.hash,familyHash:this.env.familyIdHash});sql.exec('DELETE FROM linked_parents');}
+      const day=new Date().toISOString().slice(0,10);
       const exists=[...sql.exec('SELECT id FROM family LIMIT 1')].length>0;
       // One report per active day, plus mutations; no per-family fanout for ops reads.
       if(exists && (request.method!=='GET' || this.reportDay!==day) || response.ok && new URL(request.url).pathname==='/api/admin/delete-family') {
@@ -98,8 +115,11 @@ export class RegistryLimits {
   }
 }
 export default {
+  scheduled(controller,env,ctx){ctx.waitUntil(scheduledEmails(env,new Date(controller.scheduledTime)));},
   async fetch(request,env,ctx) {
     const url=new URL(request.url);
+    const cleanHeaders=new Headers(request.headers);cleanHeaders.delete('X-Internal-Account-Parent');request=new Request(request,{headers:cleanHeaders});
+    const auth=await routeAuth(request,env);if(auth)return auth;
     if(url.pathname==='/mcp' || url.pathname.startsWith('/mcp/t/')) {
       if(request.headers.has('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin request denied'},403);
       if(request.method!=='POST')return json({error:'Method not allowed'},405,{Allow:'POST'});
@@ -138,11 +158,12 @@ export default {
       const response=await env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/stats'));
       if(!env.SHARES || !response.ok)return response;
       const stats=await response.json();
-      stats.sharing=await shareRequest(env,'/stats',{});
+      stats.sharing=await shareRequest(env,'/stats',{});if(env.ACCOUNTS)stats.email=await accountRequest(env,'/stats');
       return json(stats);
     }
     if(!env.SESSION_SECRET || env.SESSION_SECRET.length<32 || !env.IP_HASH_SALT || env.IP_HASH_SALT.length<32) return json({error:'Service secrets are not configured'},503);
     if(['POST','PATCH','DELETE'].includes(request.method) && request.headers.get('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin write denied'},403);
+    if(url.pathname==='/api/config'&&!request.headers.has('X-Family-Code'))return json({serverTts:true,...authConfig(env,request)});
     const ip=await sha256(env.IP_HASH_SALT+':'+(request.headers.get('CF-Connecting-IP') || 'local'));
     const registry=env.REGISTRY.get(env.REGISTRY.idFromName('registry'));
     const limit=kind=>registry.fetch(new Request('https://internal/limit',{method:'POST',body:JSON.stringify({kind,ip})}));
@@ -173,6 +194,7 @@ export default {
       const internal=new URL(request.url);internal.pathname='/api/internal/create';
       const response=await env.FAMILY.get(env.FAMILY.idFromName('fam:'+hash)).fetch(new Request(internal,{method:'POST',headers,body:request.body,duplex:'half'}));
       if(!response.ok)return response;
+      const account=await accountSession(request,env);if(account)await linkFamily(env,account,code);
       return new Response(JSON.stringify({...await response.json(),code}),{status:201,headers:response.headers});
     }
     // This endpoint is intentionally reachable only from the create branch above.
@@ -182,6 +204,7 @@ export default {
     if(!validCode(code)) {await limit('lookup-failed');return json({error:'Family not found'},404);}
     const hash=await sha256(code), headers=new Headers(request.headers);
     headers.set('X-Internal-Family-Hash',hash);headers.set('X-Family-Code',code);headers.set('X-Internal-Sharing-IP',ip);
+    const account=await accountSession(request,env);if(account?.families.some(f=>f.hash===hash)){const r=await env.FAMILY.get(env.FAMILY.idFromName('fam:'+hash)).fetch(new Request('https://internal/api/internal/account/parents',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));if(r.ok&&(await r.json()).parents.some(p=>p.hash===account.hash))headers.set('X-Internal-Account-Parent','1');}
     const isTts=url.pathname==='/api/tts' && request.method==='GET';
     // Reuse the ordinary family lookup path; never trust a syntactically valid code alone.
     const lookupURL=new URL(request.url);if(isTts) lookupURL.pathname='/api/config';

@@ -504,7 +504,7 @@ export function createHandler(ctx, env) {
       }
       if (!family) fail("Family not found",404);
       const sessionEnv={...env,familyIdHash:await sha256(env.familyIdHash+family.session_epoch)};
-      const parent = await isParent(req.request, sessionEnv);
+      const parent = env.accountParent === true || await isParent(req.request, sessionEnv);
       async function verifyPin(pin) {
         const bucket=get("SELECT * FROM pin_limit WHERE id=1"), timestamp=Date.now();
         if(bucket && bucket.until>timestamp && bucket.count>=10) fail("Try again in 15 minutes",429);
