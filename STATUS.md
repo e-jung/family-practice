@@ -17,7 +17,7 @@ Last updated: 2026-11-14
 ## Changelog-pending (branch `parent-mcp`; not deployed)
 
 - Separate Parent page: Kids, per-kid Spelling lists and Bible verses, This device, Family, and Connect an AI assistant. The kid view always has three fitting tabs. Mobile parent sheets keep Save/Cancel visible, scroll their body, bound textareas and normalize iOS date inputs. Prepared shell VERSION: `v7` (live remains `v6`).
-- MCP connector complete: named per-family hash-only bearer connections, add/read or read-only scopes, revoke/revoke-all, seven tools and bounded aggregate progress. Local validation record is reported with this branch; no deployment or Cloudflare account API calls authorized.
+- MCP connector complete: named per-family hash-only bearer connections, add/read or read-only scopes, revoke/revoke-all, seven tools and bounded aggregate progress. Automatic invocation URL logging is disabled in the pending deployment config to avoid retaining bearer links (application logs remain enabled). Pre-auth IP/global dispatch caps also bound unknown-token traffic. Local validation record is reported with this branch; no deployment or Cloudflare account API calls authorized.
 
 ## Configuration
 
@@ -64,8 +64,9 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
 
+- **2026-11-14: Suppress accidental zoom on the child practice desk.** Viewport scaling limits, manipulation touch behavior, iOS pinch guards and ≥16px form controls prevent zoom from disrupting practice. Single-finger scrolling and rem-based OS text sizing remain; pinch magnification is intentionally restricted (accessibility trade-off documented in DESIGN.md).
 - **2026-11-14: Parent tools live on a separate page, not in kid tabs.** Wrapping section controls keep every tool reachable on a phone; sheets scroll independently of their visible action footer.
-- **2026-11-14: MCP uses per-family scoped connection tokens, not accounts/OAuth.** Only token hashes are stored; the embedded non-reversible family hash routes without scanning. No delete tools, aggregate progress only, 60 requests/min/token and 20 writes/hour/family. PIN changes deliberately keep assistant access until explicitly revoked.
+- **2026-11-14: MCP uses per-family scoped connection tokens, not accounts/OAuth.** Only token hashes are stored; the embedded non-reversible family hash routes without scanning. Uses the legacy initialize lifecycle (`2025-11-25`); the current `2026-07-28` protocol removes that handshake and is not advertised. No delete tools, aggregate progress only, 60 requests/min/token and 20 writes/hour/family. PIN changes deliberately keep assistant access until explicitly revoked.
 - **2026-11-14: Learn has no intro screen; the stage tabs are the navigation.** Tap any stage to jump to it; a forward jump is recorded as a skip and never credits learning. *Why:* parent testing found the intro page redundant and a separate "Skip to recall" button duplicative once the tabs work.
 - **2026-11-14: Learn stages scale with word length and never demote.** 1–3 letters get 2 stages, 4–5 get 3 and 6+ get 4. A miss shows the word, then retries the same stage. A first-try Fade jumps to Recall. *Why:* parent testing found the fixed 4–5 steps drawn-out and step-backs punitive.
 - **2026-11-14: Spaced repetition uses Leitner boxes (1/2/4/7/14/30 days), not FSRS.** *Why:* weekly spelling lists are small, and "this word is in box 2" is explainable to kids and parents. It is deterministic, cheap to compute in each family DO, and backfilled from history. FSRS suits large card decks.

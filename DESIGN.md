@@ -34,3 +34,7 @@ Section tone is set with `data-tone` on `#app` (spelling, verses, progress, pare
 ## Motion and feedback
 - One authored moment: landing demo letters fade into marigold blanks. Everything else is ≤150ms state change; `prefers-reduced-motion` disables all of it.
 - Key sound (Kenney CC0 tick) and haptics are per-device, default on (kids like the click; Incord defaults off), never before a gesture. iOS haptics use a transparent native `<input switch>` overlay on every button.
+
+## Mobile zoom policy
+
+At the parent's request, the viewport disallows user scaling, html/body use `touch-action: manipulation`, and iOS gesture/multi-touch handlers suppress pinch zoom (including Safari). Single-finger scrolling stays native; body overscroll is disabled to keep the practice band steady. Every input/textarea/select is at least 16px to prevent focus auto-zoom. **Accessibility trade-off:** this restricts pinch magnification; keep the already-large type in rem, preserve OS text-size preferences, and do not shrink content to make a layout fit.

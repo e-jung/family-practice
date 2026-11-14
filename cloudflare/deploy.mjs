@@ -59,7 +59,7 @@ export function metadataFor(plan, jwt, migrationTag) {
   return {
     main_module: 'cloudflare/worker.js',
     compatibility_date: '2026-11-01',
-    observability: { enabled: true, head_sampling_rate: 1 },
+    observability: { enabled: true, head_sampling_rate: 1, logs: { enabled: true, invocation_logs: false } },
     bindings: [
       { name: 'FAMILY', type: 'durable_object_namespace', class_name: 'FamilyDatabase' },
       { name: 'REGISTRY', type: 'durable_object_namespace', class_name: 'RegistryLimits' },

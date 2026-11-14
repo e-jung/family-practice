@@ -21,6 +21,8 @@ try {
   assert.ok(!plan.manifest['/_headers'] && !plan.manifest['/_redirects']);
   assert.ok(Object.values(plan.manifest).every(x => /^[a-f0-9]{32}$/.test(x.hash)));
   const dryRun = await deploy({ root, dryRun: true, env: {}, log() {}, fetchImpl() { throw Error('Network forbidden'); } });
+  assert.equal(dryRun.metadata_if_first_deployment.observability.logs.invocation_logs, false, 'bearer URLs must not enter invocation logs');
+  assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/mcp.js'));
   assert.ok(dryRun.metadata_if_first_deployment.bindings.some(b=>b.type==='ai' && b.name==='AI'));
   const env = { CF_API_TOKEN: 'private-api-token', CF_ACCOUNT_ID: 'a'.repeat(32), IP_HASH_SALT: 'i'.repeat(64), SESSION_SECRET: 's'.repeat(64) };
   const response = (result, status=200) => new Response(JSON.stringify({ success: true, result }), { status });

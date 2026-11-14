@@ -1131,7 +1131,7 @@ function editVerse(v) {
     }),
     text = textArea("verse-text", v?.text || "", {
       required: true,
-      maxlength: 6000,
+      maxlength: 2000,
     }),
     translation = input("translation", v?.translation || "", { maxlength: 60 }),
     due = input("due", v?.due_date || "", { type: "date" });
@@ -1324,7 +1324,7 @@ async function assistantControls() {
 function parentPractice() {
   const isList = parentSection === "Spelling lists";
   const picker = el("select", { id: "parent-kid" }, state.kids.map(k => el("option", { value: k.id, selected: kid?.id === k.id }, k.name)));
-  picker.addEventListener("change", async () => { kid = state.kids.find(k => k.id === picker.value); await reload(); parentHome(); });
+  picker.addEventListener("change", async () => { kid = state.kids.find(k => k.id === Number(picker.value)); await reload(); parentHome(); });
   app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, parentSection)),
     state.kids.length ? field("Kid", picker) : el("p", {}, "Add a kid in Kids first.")));
   if (!state.kids.length) return;

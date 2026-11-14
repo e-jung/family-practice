@@ -6,19 +6,22 @@ const json=(value,status=200,headers={})=>Response.json(value,{status,headers:{'
 const error=(id,code,message,status=400)=>json({jsonrpc:'2.0',id,error:{code,message}},status);
 const obj=properties=>({type:'object',properties,additionalProperties:false});
 const id={type:'integer',minimum:1}, text=maxLength=>({type:'string',minLength:1,maxLength});
-const listFields={kid_id:id,title:text(120),date:{type:'string',format:'date'},words:{type:'array',minItems:1,maxItems:100,items:{...obj({word:text(100),sentence:{type:'string',maxLength:500}}),required:['word']}}};
+const kid={anyOf:[id,text(60)]};
+const wordSet={type:'array',minItems:1,maxItems:100,items:{...obj({word:text(100),sentence:{type:'string',maxLength:500}}),required:['word']}};
+const listFields={title:text(120),date:{type:'string',format:'date'},words:wordSet};
 const schema=(properties,required=[])=>({...obj(properties),required});
 export const MCP_TOOLS=[
- ['list_kids','List active kids (first names or nicknames only).',schema({})],
- ['list_spelling_lists','List active spelling lists for a kid, without word content.',schema({kid_id:id},['kid_id'])],
- ['get_spelling_list','Read an active spelling list and its words.',schema({id},['id'])],
- ['add_spelling_list','Add a parent-provided spelling list with optional example sentences.',schema(listFields,['kid_id','title','words'])],
- ['update_spelling_list','Replace the title, date and words of an active spelling list. Existing practice history is preserved.',schema({id,...listFields},['id','kid_id','title','words'])],
- ['add_verse','Add parent-provided verse wording; never fetch translations.',schema({kid_id:id,reference:text(120),text:text(2000),translation:{type:'string',maxLength:60},due_date:{type:'string',format:'date'}},['kid_id','reference','text'])],
- ['get_progress','Read a kid’s progress summary, not raw typed answers.',schema({kid_id:id},['kid_id'])],
+ ['list_kids','List kids (id, first name or nickname, optional grade).',schema({})],
+ ['list_spelling_lists','List a kid’s spelling lists with dates, word counts and archived status. Kid accepts an id or exact case-insensitive name.',schema({kid},['kid'])],
+ ['get_spelling_list','Read a spelling list, including its words and example sentences.',schema({list_id:id},['list_id'])],
+ ['add_spelling_list','Create a new weekly list for a kid (id or exact case-insensitive name). Supply kid-friendly example sentences; missing sentences stay blank. Add a new list for new weekly words.',schema({kid,...listFields},['kid','words'])],
+ ['update_spelling_list','Update a list’s title/date or replace its word set while preserving practice history. Supply kid-friendly sentences; missing sentences stay blank.',schema({list_id:id,...listFields},['list_id'])],
+ ['add_verse',"Add a verse for a kid (id or exact case-insensitive name). Paste the family's own translation text; do not fabricate scripture. Public-domain KJV/WEB is fine.",schema({kid,reference:text(120),text:text(2000),translation:{type:'string',maxLength:60},due_date:{type:'string',format:'date'}},['kid','reference','text'])],
+ ['get_progress','Read aggregates only: first-try accuracy per list, Learning/Getting it/Mastered counts, struggling words, due-today count and verse stars. Kid accepts id or exact case-insensitive name.',schema({kid},['kid'])],
 ].map(([name,description,inputSchema])=>({name,description,inputSchema,annotations:{readOnlyHint:!['add_spelling_list','update_spelling_list','add_verse'].includes(name),destructiveHint:false,openWorldHint:false}}));
 const writable=name=>['add_spelling_list','update_spelling_list','add_verse'].includes(name);
 function valid(value,s) {
+ if(s.anyOf)return s.anyOf.some(option=>valid(value,option));
  if(s.type==='object')return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(k=>Object.hasOwn(s.properties,k)&&valid(value[k],s.properties[k]))&&(s.required||[]).every(k=>Object.hasOwn(value,k));
  if(s.type==='integer')return Number.isSafeInteger(value)&&value>=s.minimum;
  if(s.type==='array')return Array.isArray(value)&&value.length>=s.minItems&&value.length<=s.maxItems&&value.every(v=>valid(v,s.items));
@@ -62,7 +65,7 @@ export async function handleMcp(request,sql,run) {
  if(reader)try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>256*1024){await reader.cancel();return json({error:'Body too large'},413);}chunks.push(value);}}finally{reader.releaseLock();}
  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
  let call;try{call=JSON.parse(new TextDecoder().decode(bytes));}catch{return error(null,-32700,'Parse error');}
- if(!call||typeof call!=='object'||Array.isArray(call)||call.jsonrpc!=='2.0'||typeof call.method!=='string'||(Object.hasOwn(call,'id')&&!(typeof call.id==='string'||typeof call.id==='number'&&Number.isFinite(call.id)))||(call.params!==undefined&&(!call.params||typeof call.params!=='object'||Array.isArray(call.params))))return error(null,-32600,'Invalid request; batches are not supported');
+ if(!call||typeof call!=='object'||Array.isArray(call)||call.jsonrpc!=='2.0'||typeof call.method!=='string'||(Object.hasOwn(call,'id')&&!(call.id===null||typeof call.id==='string'||typeof call.id==='number'&&Number.isFinite(call.id)))||(call.params!==undefined&&(!call.params||typeof call.params!=='object'||Array.isArray(call.params))))return error(null,-32600,'Invalid request; batches are not supported');
  const version=request.headers.get('MCP-Protocol-Version');
  if(version&&!versions.includes(version))return error(call.id??null,-32600,'Unsupported MCP protocol version');
  sql.exec('UPDATE mcp_connections SET last_used_at=? WHERE id=?',new Date(now).toISOString(),connection.id);

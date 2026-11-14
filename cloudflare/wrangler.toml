@@ -36,3 +36,8 @@ new_sqlite_classes = ["TtsCache"]
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+# Connection URLs contain bearer credentials; never record invocation URLs.
+[observability.logs]
+enabled = true
+invocation_logs = false

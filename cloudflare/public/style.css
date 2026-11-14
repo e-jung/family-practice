@@ -398,3 +398,10 @@ dialog > :not(.row):not(form) { padding: 20px; }
 .sheet-form > .form-actions > button { flex: 1 1 0; min-width: 0; }
 .connection-url { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
 @media (max-width: 600px) { dialog { padding: 0; } .tabs button { min-width: 0; padding-inline: 10px; white-space: nowrap; } }
+
+/* Child practice is a stable desk; preserve native single-finger scrolling. */
+html, body { touch-action: manipulation; }
+body { overscroll-behavior: none; }
+input, textarea, select { font-size: max(1rem, 16px); }
+
+.hero-grid > *, .onboarding > * { min-width: 0; }

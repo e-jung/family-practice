@@ -11,7 +11,7 @@ window.addEventListener('beforeinstallprompt', event => {
 window.addEventListener('appinstalled', () => { installPrompt = null; document.getElementById('install-hint')?.remove(); });
 function updateInstallHint() {
   const app = document.getElementById('app');
-  // Voice settings exist only in unlocked parent settings, including the Parent tab.
+  // Voice settings exist only in unlocked parent settings, on the Parent page.
   if (!app?.querySelector('#voice') || standalone()) { document.getElementById('install-hint')?.remove(); return; }
   let section = document.getElementById('install-hint');
   if (!section) {
@@ -73,3 +73,14 @@ function unlockAudio() {
 }
 document.addEventListener('pointerdown', unlockAudio, { passive: true });
 document.addEventListener('keydown', unlockAudio);
+
+// Avoid accidental zoom while a child taps the practice keyboard. Single-finger
+// scrolling remains native; iOS Safari may ignore the viewport zoom constraint.
+if (ios) {
+  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(type, event => event.preventDefault(), {passive: false});
+  }
+  document.addEventListener('touchmove', event => {
+    if (event.touches.length > 1 || (typeof event.scale === 'number' && event.scale !== 1)) event.preventDefault();
+  }, {passive: false});
+}

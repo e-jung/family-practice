@@ -43,12 +43,13 @@ async function editDialog(page, kind, label) {
     const controls = [...d.querySelectorAll('input:not([type=hidden]), textarea, select, button')].filter(e => e.getClientRects().length && !e.classList.contains('haptic-overlay'));
     return {pageY: scrollY, dialog: {left: box.left, right: box.right, top: box.top, bottom: box.bottom}, controls: controls.map(e => {
       const r = e.getBoundingClientRect();
-      return {name: e.labels?.[0]?.textContent || e.textContent || e.type, type: e.type, left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, client: e.clientWidth, scroll: e.scrollWidth};
+      return {name: e.labels?.[0]?.textContent || e.textContent || e.type, type: e.type, fontSize: parseFloat(getComputedStyle(e).fontSize), left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, client: e.clientWidth, scroll: e.scrollWidth};
     }), width: innerWidth, height: innerHeight};
   });
   // Opening may scroll the clicked management row into view; no scrolling is used to reveal the sheet actions.
   assert.ok(geometry.controls.some(c => c.type === 'date'), `${label}: date control is checked`);
   for (const c of geometry.controls) {
+    if (!['Save','Cancel'].includes(c.name.trim()) && ['text','date','textarea','select-one','password','number'].includes(c.type)) assert.ok(c.fontSize >= 16, `${label}: ${c.name} avoids iOS focus zoom`);
     assert.ok(c.width > 0 && c.left >= 0 && c.right <= geometry.width + 1, `${label}: ${c.name} fits viewport width`);
     assert.ok(c.left >= geometry.dialog.left && c.right <= geometry.dialog.right + 1, `${label}: ${c.name} fits dialog width`);
     assert.ok(c.scroll <= c.client + 1, `${label}: ${c.name} has no internal horizontal overflow`);
@@ -67,6 +68,7 @@ try {
   code = (await call(fixture, '/api/families', {pin})).code;
   await call(fixture, '/api/parent/unlock', {pin});
   await call(fixture, '/api/admin/kids', {name: 'Layout kid', grade: '3'});
+  await call(fixture, '/api/admin/kids', {name: 'Second kid'});
   const stateResponse = await fixture.request.get(origin + '/api/state', {headers: {'X-Family-Code': code}});
   assert.ok(stateResponse.ok());
   const kid = (await stateResponse.json()).kids[0];
@@ -102,7 +104,15 @@ try {
       await noOverflow(page, `${section}-${label}`);
       const slug = section.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-');
       await page.screenshot({path: `${out}/parent-${slug}-${label}.png`, fullPage: true});
-      if (section === 'Spelling lists') await editDialog(page, 'spelling', `edit-spelling-${label}`);
+      if (section === 'Spelling lists') {
+        const picker = page.getByLabel('Kid', {exact: true});
+        await picker.selectOption({label: 'Second kid'});
+        await page.getByText(listTitle, {exact: true}).waitFor({state:'hidden'});
+        assert.equal(await page.getByLabel('Kid', {exact:true}).inputValue(), '2');
+        await page.getByLabel('Kid', {exact:true}).selectOption({label:'Layout kid'});
+        await page.getByText(listTitle, {exact:true}).waitFor();
+        await editDialog(page, 'spelling', `edit-spelling-${label}`);
+      }
       if (section === 'Bible verses') await editDialog(page, 'verse', `edit-verse-${label}`);
       if (section === 'Connect an AI assistant') {
         await page.getByLabel(/Name/, {exact: false}).fill(`Layout smoke ${label}`);
@@ -120,7 +130,11 @@ try {
     await parentButton.click();
     await page.getByRole('button', {name: 'Done', exact: true}).waitFor();
     await page.locator('header').getByRole('button', {name: 'Lock', exact: true}).click();
-    await page.locator('header').getByRole('button', {name: 'Parent mode', exact: true}).waitFor();
+    await page.locator('header').getByRole('button', {name: 'Parent mode', exact: true}).click();
+    await page.getByLabel('Parent PIN', {exact:true}).fill(pin);
+    await page.getByRole('button', {name:'Unlock', exact:true}).click();
+    await page.getByRole('button', {name:'Done', exact:true}).waitFor();
+    assert.equal(await page.getByRole('dialog').count(),0,'PIN unlock opens dedicated Parent page');
     await context.close();
   }
   assert.deepEqual(errors, [], 'no browser page errors');

@@ -423,16 +423,26 @@ export function createHandler(ctx, env) {
     if(new URL(request.url).pathname==='/mcp') {
       if(!get('SELECT id FROM family WHERE id=1'))return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
       return handleMcp(request,sql,(name,b)=>{
-        const kid=()=>{if(!get('SELECT id FROM kids WHERE id=? AND archived=0',b.kid_id))fail('Kid not found',404);};
-        const list=id=>{const l=get('SELECT l.* FROM lists l JOIN kids k ON k.id=l.kid_id WHERE l.id=? AND l.archived=0 AND k.archived=0',id);if(!l)fail('List not found',404);return {...l,words:all('SELECT * FROM words WHERE list_id=? AND archived=0 ORDER BY id',id)};};
+        const resolveKid=value=>{
+          const matches=all('SELECT id,name FROM kids WHERE archived=0').filter(k=>typeof value==='number'?k.id===value:k.name.toLocaleLowerCase()===value.toLocaleLowerCase());
+          if(matches.length!==1)fail(matches.length?'More than one kid has that name; use an id':'Kid not found',404);
+          return matches[0].id;
+        };
+        const list=id=>{const l=get('SELECT l.* FROM lists l JOIN kids k ON k.id=l.kid_id WHERE l.id=? AND k.archived=0',id);if(!l)fail('List not found',404);return {...l,words:all('SELECT id,word,sentence FROM words WHERE list_id=? AND archived=0 ORDER BY id',id)};};
         if(name==='list_kids')return {kids:all('SELECT id,name,grade FROM kids WHERE archived=0 ORDER BY id')};
-        if(name==='get_spelling_list')return {list:list(b.id)};
-        kid();
-        if(name==='list_spelling_lists')return {lists:all('SELECT id,kid_id,title,date FROM lists WHERE kid_id=? AND archived=0 ORDER BY date DESC,id DESC',b.kid_id)};
-        if(name==='add_spelling_list')return {list:list(addList(b))};
-        if(name==='update_spelling_list'){list(b.id);return {list:list(addList(b))};}
-        if(name==='add_verse')return {id:addVerse(b)};
-        const data=progress(b.kid_id);delete data.attempts;delete data.learnAttempts;delete data.verseAttempts;return data;
+        if(name==='get_spelling_list')return {list:list(b.list_id)};
+        if(name==='update_spelling_list'){
+          const old=list(b.list_id);
+          return {list:list(addList({id:old.id,kid_id:old.kid_id,title:b.title??old.title,date:b.date??old.date,words:b.words??old.words}))};
+        }
+        const kid=resolveKid(b.kid);
+        if(name==='list_spelling_lists')return {lists:all('SELECT l.id,l.title,l.date,l.archived,COUNT(w.id) word_count FROM lists l LEFT JOIN words w ON w.list_id=l.id AND w.archived=0 WHERE l.kid_id=? GROUP BY l.id ORDER BY l.date DESC,l.id DESC',kid).map(l=>({...l,archived:!!l.archived}))};
+        if(name==='add_spelling_list')return {list:list(addList({...b,kid_id:kid,title:b.title??'Week of '+(b.date||now().slice(0,10))}))};
+        if(name==='add_verse')return {id:addVerse({...b,kid_id:kid})};
+        const data=progress(kid);
+        return {listsCompleted:data.listsCompleted,streak:data.streak,charts:data.charts,
+          wordBank:{counts:data.wordBank.counts,dueCount:data.wordBank.dueCount,struggling:data.wordBank.struggling.map(w=>({word:w.word,misses:w.misses}))},
+          mastery:data.mastery.map(v=>({id:v.id,reference:v.reference,stars:v.stars}))};
       });
     }
     const headers = new Headers(); let status=200; let response;

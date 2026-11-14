@@ -13,6 +13,10 @@ async function noOverflow(page,label) {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${label}: no horizontal overflow`);
 }
 async function checkInstallability(page) {
+  const viewport = await page.locator('meta[name="viewport"]').getAttribute('content');
+  for (const value of ['width=device-width', 'initial-scale=1', 'maximum-scale=1', 'user-scalable=no', 'viewport-fit=cover']) assert.ok(viewport.includes(value), `viewport includes ${value}`);
+  assert.deepEqual(await page.evaluate(() => [getComputedStyle(document.documentElement).touchAction, getComputedStyle(document.body).touchAction]), ['manipulation', 'manipulation']);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).overscrollBehavior), 'none');
   const manifestURL=await page.locator('link[rel="manifest"]').getAttribute('href');
   assert.ok(manifestURL,'page links a web app manifest');
   const response=await page.request.get(new URL(manifestURL,origin).href);

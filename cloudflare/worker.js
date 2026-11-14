@@ -61,12 +61,15 @@ export class RegistryLimits {
         return json({ok:true});
       }
       const {kind,ip,family,characters}=payload;
-      if(!['create','lookup-check','lookup-failed','tts'].includes(kind) || !/^[a-f0-9]{64}$/.test(ip)) return json({error:'Invalid limit'},400);
+      if(!['create','lookup-check','lookup-failed','tts','mcp'].includes(kind) || !/^[a-f0-9]{64}$/.test(ip)) return json({error:'Invalid limit'},400);
       const now=Date.now();this.sql.exec('DELETE FROM limits WHERE until<=?',now);
       const get=key=>[...this.sql.exec('SELECT * FROM limits WHERE key=?',key)][0];
       const quotaHit=()=>this.sql.exec('INSERT INTO ops_voice(day,quota_429) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET quota_429=quota_429+1',today);
       const bump=(key,ms)=>this.sql.exec('INSERT INTO limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',key,now+ms);
-      if(kind==='tts') {
+      if(kind==='mcp') {
+        if((get('mcp:ip:'+ip)?.count||0)>=240 || (get('mcp:global')?.count||0)>=2400)return new Response(JSON.stringify({error:'Too many assistant requests'}),{status:429,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':'60'}});
+        bump('mcp:ip:'+ip,60000);bump('mcp:global',60000);
+      } else if(kind==='tts') {
         if(!/^[a-f0-9]{64}$/.test(family) || !Number.isInteger(characters) || characters<1 || characters>300) return json({error:'Invalid limit'},400);
         const day=new Date(now).toISOString().slice(0,10), until=Date.parse(day+'T00:00:00Z')+86400000;
         const globalKey='tts:global:'+day+':chars', familyKey='tts:family:'+family+':'+day+':chars', ipKey='tts:ip:'+ip+':chars';
@@ -92,6 +95,10 @@ export default {
     if(url.pathname==='/mcp' || url.pathname.startsWith('/mcp/t/')) {
       if(request.headers.has('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin request denied'},403);
       if(request.method!=='POST')return json({error:'Method not allowed'},405,{Allow:'POST'});
+      if(!env.IP_HASH_SALT || env.IP_HASH_SALT.length<32)return json({error:'Service secrets are not configured'},503);
+      const ip=await sha256(env.IP_HASH_SALT+':'+(request.headers.get('CF-Connecting-IP')||'local'));
+      const limited=await env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/limit',{method:'POST',body:JSON.stringify({kind:'mcp',ip})}));
+      if(!limited.ok)return limited;
       const token=routeToken(request);
       if(!token)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
       const headers=new Headers(request.headers);headers.delete('X-Family-Code');headers.delete('Cookie');headers.set('X-Internal-Family-Hash',token[2]);
