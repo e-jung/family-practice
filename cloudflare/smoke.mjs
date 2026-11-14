@@ -32,7 +32,7 @@ try {
   check((await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'Local smoke',version:'1'}})).body.result.protocolVersion,'2025-11-25');
   check((await req('/mcp/t/'+token)).status,405);
   check((await req('/mcp/t/'+token,{jsonrpc:'2.0',method:'notifications/initialized'})).status,202);
-  check((await rpc('tools/list')).body.result.tools.length,7);
+  check((await rpc('tools/list')).body.result.tools.length,9);
   const tool=async(name,args={})=>{const r=await rpc('tools/call',{name,arguments:args});check(r.status,200);check(r.body.result.isError,undefined);return JSON.parse(r.body.result.content[0].text);};
   check((await tool('list_kids')).kids[0].name,'Alex');
   check((await tool('list_spelling_lists',{kid:1})).lists.length,1);
