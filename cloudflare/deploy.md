@@ -57,6 +57,18 @@ data only, preserving the destination family's PIN and identity.
   nodes, not user-controlled HTML. All responses have nosniff and no-referrer;
   HTML has self-only CSP, no inline scripts, `frame-ancestors 'none'`.
 
+## Private-by-link sharing
+
+The `SHARES` binding is a singleton SQLite `ShareStore` named `shares`. It stores immutable one-off snapshots, single-admin classes with up to 200 immutable published weeks, aggregate counters and reports. It receives HMAC-derived ownership bindings, never family codes or kid identifiers. The follower family stores its own selected kids and import markers. Class follows poll the latest published week with a ten-minute family-side cache.
+
+A public `/s/<slug>` or `/c/<slug>` is an unlisted bearer link with no expiry until the owner stops it. No public catalogue, search, accounts or rosters are provided. Public snapshots include only title/date/note, words with sentences and an optional verse (reference/text/translation). Public pages and APIs are `noindex`; user data is rendered as text. Parents must not put private information into shared content. Imported copies belong to the receiving family and do not change when the source is edited or stopped.
+
+Parents create/stop links, manage classes, publish weeks and choose import recipients after PIN unlock. Existing per-family content limits apply transactionally to multi-kid imports; duplicate verses (same reference and text) are skipped. Single-admin classes are limited to five active feeds and one publication per ten minutes. Registry quotas are 20 share/class creations/day/family, 60 imports/hour/IP and 120 public reads/minute/IP (salted hashes only). Reports accept optional reasons of at most 300 characters. Ops statistics include aggregate share/class/import/report counts, never content or ownership identifiers.
+
+Additive migration `v3` creates `ShareStore`. A live `v2` deployment must send `{old_tag:"v2",new_tag:"v3",steps:[{new_sqlite_classes:["ShareStore"]}]}`; a first deployment sends the full v1+v2+v3 chain. Preserve existing migration history and secrets. The raw deployer handles both paths; dry-run and mocked-fetch tests require no Cloudflare API access.
+
+Local sharing checks: `node cloudflare/sharing-smoke.mjs` runs the real ten-minute publication interval; `node cloudflare/sharing-ui-smoke.mjs <screenshot-directory>` checks desktop and phone sharing journeys. Use fresh disposable state to avoid inherited family-creation quotas.
+
 ## Cloud voice
 
 `GET /api/tts?text=hello&lang=en` requires an existing `X-Family-Code` (kid access;
