@@ -532,7 +532,6 @@ function learnStep(round) {
     el("section", {class: "desk"},
       el("h2", {}, prompt), learnStageIndicator(round.learning), cue,
       el("div", {class: "listen"}, button([icon("speaker"), "Say again"], () => say([w.word, w.sentence, w.word]), "secondary")),
-      form,
       el("div", {class: "learn-shortcuts"},
         step.level !== 100 ? button("Skip to recall", async () => {
           clearTimeout(comparisonTimer);
@@ -541,7 +540,8 @@ function learnStep(round) {
           round.learning = {...round.learning, index: round.learning.steps.length - 1};
           learnStep(round);
         }, "secondary") : null,
-        button("I know these — start the test", () => learnToTest(round), "quiet"))));
+        button("I know these — start the test", () => learnToTest(round), "quiet")),
+      form));
   if (!dockKeyboard({target: () => answer, action: actions})) form.append(actions);
   focus(answer);
   say([w.word, w.sentence, w.word]);
