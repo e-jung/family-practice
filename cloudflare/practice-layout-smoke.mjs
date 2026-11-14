@@ -72,7 +72,6 @@ try {
       await page.getByRole('button', {name: 'End practice'}).click();
       if (capture) {
         await list.getByRole('button', {name: 'Learn', exact: true}).click();
-        await page.getByRole('button', {name: 'Start learning', exact: true}).click();
         const answer = page.getByLabel('Type the full word', {exact: true});
         await answer.fill('beautiful');
         await page.getByRole('button', {name: 'Check word'}).click();

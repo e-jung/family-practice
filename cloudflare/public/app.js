@@ -428,36 +428,32 @@ function shuffled(a) {
   return out;
 }
 // Every Learn attempt is tagged independently from first-try spelling tests.
-function startLearning(ws, list) {
-  shell("practice", "spelling");
-  app.append(practiceBand({ title: list.title, status: "Learn · " + ws.length + " words", cells: roundCells(ws.length, -1), exit: exitButton("Back", render) }),
-    el("section", { class: "desk intro" },
-      el("h2", {}, "Learn the words first"),
-      el("p", {}, "Listen and copy each word. Then a few letters fade, and you type the whole word again. If you miss, compare it and retry the same stage."),
-      el("small", {}, "Based on Copy–Cover–Compare and vanishing-cue practice. Learn rounds don’t count toward test scores."),
-      el("div", { class: "row form-actions" },
-        button("Start learning", async () => {
-          const view = viewVersion;
-          const session = await api("/api/sessions", {kid_id: kid.id, list_id: list.id, word_ids: ws.map(w => w.id), kind: "learn"});
-          if (view !== viewVersion) return;
-          const round = {ws: [...ws], list, session: session.id, index: 0, comparisons: 0};
-          round.learning = newLearnWord(ws[0].word);
-          learnStep(round);
-        }, "primary"))));
+async function startLearning(ws, list) {
+  const view = viewVersion;
+  try {
+    const session = await api("/api/sessions", {kid_id: kid.id, list_id: list.id, word_ids: ws.map(w => w.id), kind: "learn"});
+    if (view !== viewVersion) return;
+    const round = {ws: [...ws], list, session: session.id, index: 0, comparisons: 0};
+    round.learning = newLearnWord(ws[0].word);
+    learnStep(round);
+  } catch (err) { toast(err.message); }
 }
 function renderCue(node, text) {
   // Size the letters so even a long word stays on one line.
   node.style.setProperty("--n", Math.max(6, text.split(" ").length));
   node.replaceChildren(...text.split(" ").map((c) => el("span", { class: c === "_" ? "blank" : "" }, c === "_" ? " " : c)));
 }
-function learnStageIndicator(learning) {
+function learnStageIndicator(learning, jump) {
   const labels = learning.steps.map(step => ({0: "Copy", 50: "Fade", 75: "Fade more", 100: "Recall"})[step.level]);
   return el("div", {class: "learn-stage-progress"},
     el("p", {class: "stage-caption"}, `Stage ${learning.index + 1} of ${labels.length} · ${labels[learning.index]}`),
-    el("ol", {class: "learn-stages", "aria-label": "Stages for this word"}, labels.map((label, i) =>
-      el("li", {class: i === learning.index ? "current" : learning.completed.includes(i) ? "complete" : "", "aria-current": i === learning.index ? "step" : null},
-        el("span", {class: "stage-number", "aria-hidden": "true"}, learning.completed.includes(i) ? "✓" : i + 1),
-        el("span", {}, label), el("span", {class: "visually-hidden"}, i === learning.index ? " · you are here" : learning.completed.includes(i) ? " · complete" : i < learning.index ? " · skipped" : " · next")))));
+    el("ol", {class: "learn-stages", "aria-label": "Stages for this word. Tap a stage to jump to it."}, labels.map((label, i) => {
+      const state = i === learning.index ? "current" : learning.completed.includes(i) ? "complete" : "";
+      const sr = i === learning.index ? " · you are here" : learning.completed.includes(i) ? " · complete" : i < learning.index ? " · skipped" : " · jump here";
+      const body = [el("span", {class: "stage-number", "aria-hidden": "true"}, learning.completed.includes(i) ? "✓" : i + 1), el("span", {}, label), el("span", {class: "visually-hidden"}, sr)];
+      return el("li", {class: state, "aria-current": i === learning.index ? "step" : null},
+        i === learning.index ? el("span", {class: "stage-tab"}, ...body) : button(body, () => jump(i), "stage-tab"));
+    })));
 }
 async function learnToTest(round) {
   const view = viewVersion;
@@ -530,16 +526,18 @@ function learnStep(round) {
       cells: roundCells(round.ws.length, round.index, round.ws.map((_, i) => i < round.index ? "done" : "")),
       exit: exitButton("End learning", () => {if (confirm("Leave learning? Your attempts will still be saved.")) render();}) }),
     el("section", {class: "desk"},
-      el("h2", {}, prompt), learnStageIndicator(round.learning), cue,
+      el("h2", {}, prompt), learnStageIndicator(round.learning, async i => {
+          clearTimeout(comparisonTimer);
+          // Jumping ahead is a skip: logged, never credited as learning.
+          if (i > round.learning.index) {
+            await api("/api/attempts", {session_id: round.session, word_id: w.id, typed: "", mode: "learn", step: "skip"});
+            if (view !== viewVersion) return;
+          }
+          round.learning = {...round.learning, index: i, learned: false};
+          learnStep(round);
+        }), cue,
       el("div", {class: "listen"}, button([icon("speaker"), "Say again"], () => say([w.word, w.sentence, w.word]), "secondary")),
       el("div", {class: "learn-shortcuts"},
-        step.level !== 100 ? button("Skip to recall", async () => {
-          clearTimeout(comparisonTimer);
-          await api("/api/attempts", {session_id: round.session, word_id: w.id, typed: "", mode: "learn", step: "skip"});
-          if (view !== viewVersion) return;
-          round.learning = {...round.learning, index: round.learning.steps.length - 1};
-          learnStep(round);
-        }, "secondary") : null,
         button("I know these — start the test", () => learnToTest(round), "quiet")),
       form));
   if (!dockKeyboard({target: () => answer, action: actions})) form.append(actions);

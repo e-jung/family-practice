@@ -83,7 +83,6 @@ try {
     await page.getByRole('button',{name:'Start review',exact:true}).waitFor();
     await shot(page,'01-review-entry',label,true);
     await page.getByRole('button',{name:'Learn',exact:true}).first().click();
-    await page.getByRole('button',{name:'Start learning',exact:true}).click();
     for(const [i,name] of ['Copy','Fade','Fade more','Recall'].entries()) {
       await page.getByText(`Stage ${i+1} of 4 · ${name}`,{exact:true}).waitFor();
       assert.equal(await page.locator('ol.learn-stages [aria-current=step]').count(),1);

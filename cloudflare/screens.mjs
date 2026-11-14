@@ -118,7 +118,6 @@ try {
     await page.getByRole('button',{name:'End practice'}).click();
     await page.getByRole('button',{name:'Learn',exact:true}).first().click();
     if(await shuffle.count())await shuffle.uncheck();
-    await page.getByRole('button',{name:'Start learning'}).click();
     const learn=page.getByRole('textbox',{name:'Type the full word'});
     for(let stage=0;stage<1;stage++) {
       await learn.waitFor();

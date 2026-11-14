@@ -59,7 +59,6 @@ async function learnList(page) {
   await list.getByRole('button',{name:'Learn',exact:true}).click();
   const shuffle=page.getByLabel('Shuffle the words');
   if(await shuffle.count())await shuffle.uncheck();
-  await page.getByRole('button',{name:'Start learning',exact:true}).click();
   for(const word of ['friend','light','kind','cat']) {
     const stages=word.length<=3?[0,100]:word.length<=5?[0,50,100]:[0,50,75,100];
     for(const stage of stages) {
@@ -75,7 +74,7 @@ async function learnList(page) {
         assert.equal(await indicator.locator('[aria-current=step]').count(),1,'exactly one current stage');
         assert.equal(await indicator.locator('[aria-current=step].current').count(),1,'current stage has the marigold current style, including after a miss');
         assert.match(await indicator.locator('[aria-current=step]').innerText(),new RegExp(label),'current indicator names stage');
-        assert.equal(await page.getByRole('button',{name:'Skip to recall',exact:true}).isVisible().catch(()=>false),level!==100,'skip exists only before recall');
+        assert.equal(await indicator.getByRole('button').count(),stages.length-1,'every other stage is a tappable jump');
       }
       catch (error) { console.log("Learn stage mismatch", {word,stage,visible:await page.locator("#app").innerText()}); throw error; }
       if(word === 'friend' && stage === 50) {
@@ -98,8 +97,7 @@ async function learnList(page) {
   await page.getByRole('button',{name:'Let’s begin'}).waitFor();
   await page.getByRole('button',{name:'Back',exact:true}).click();
   await list.getByRole('button',{name:'Learn',exact:true}).click();
-  await page.getByRole('button',{name:'Start learning',exact:true}).click();
-  await page.getByRole('button',{name:'Skip to recall',exact:true}).click();
+  await page.locator('ol.learn-stages').getByRole('button',{name:/Recall/}).click();
   await page.getByText('Stage 4 of 4 · Recall',{exact:true}).waitFor();
   assert.equal(await page.locator('ol.learn-stages .complete').count(),0,'skipped cues are not falsely marked completed');
   await page.getByRole('textbox',{name:'Type the full word',exact:true}).fill('friend');

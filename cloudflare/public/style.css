@@ -356,7 +356,10 @@ details:not(:has(.danger)) > summary { color: inherit; }
 .learn-stage-progress { width: min(490px, 100%); }
 .desk .stage-caption { margin: 0 0 8px; font: 600 1.05rem/1.2 var(--display); }
 .learn-stages { display: flex; list-style: none; padding: 0; margin: 0; gap: 6px; }
-.learn-stages li { flex: 1 1 0; min-width: 0; border: 1.5px solid var(--rule-strong); border-radius: 6px; padding: 7px 2px; display: flex; align-items: center; justify-content: center; gap: 5px; font: 600 1rem/1.1 var(--display); }
+.learn-stages li { flex: 1 1 0; min-width: 0; border: 1.5px solid var(--rule-strong); border-radius: 6px; display: flex; font: 600 1rem/1.1 var(--display); }
+.learn-stages .stage-tab { flex: 1; min-height: 40px; padding: 7px 2px; display: flex; align-items: center; justify-content: center; gap: 5px; font: inherit; color: inherit; background: none; border: 0; border-radius: 5px; margin: 0; width: 100%; }
+.learn-stages button.stage-tab { cursor: pointer; }
+.learn-stages button.stage-tab:hover { background: var(--rule); }
 .learn-stages .complete { background: var(--cobalt); border-color: var(--cobalt); color: var(--stock); }
 .learn-stages .current { background: var(--marigold); border: 2px solid var(--ink); color: var(--ink); }
 .stage-number { font-size: .9rem; }
@@ -373,6 +376,7 @@ details:not(:has(.danger)) > summary { color: inherit; }
 .bank-explainer { font-size: .9rem; }
 .word-bank-rows { margin-bottom: 20px; }
 @media (max-width: 520px) {
-  .learn-stages li { padding: 7px 1px; gap: 3px; font-size: .9rem; }
+  .learn-stages li { font-size: .9rem; }
+  .learn-stages .stage-tab { padding: 7px 1px; gap: 3px; }
   .desk:has(.learn-stages) { gap: 8px; padding-top: 16px; }
 }
