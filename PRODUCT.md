@@ -23,7 +23,7 @@ Help a family keep a small daily habit: weekly spelling tests read aloud (word â
 
 ## Positioning
 
-Built by a parent for his own kids and shared free (MIT). No accounts, no email, no ads, no analytics: a Family Code opens practice, a Parent PIN protects edits. Parents paste their own verse wording, so there is no translation licensing and no content feed.
+Built by a parent for his own kids and shared free (MIT). No accounts, no email, no ads, no analytics: a Family Code opens practice, a Parent PIN protects edits. Parents paste their own verse wording, so there is no translation licensing and no public content feed. Optional private-by-link snapshots and single-admin weekly class lists let families exchange practice without rosters or accounts.
 
 ## Operating Context
 
@@ -35,7 +35,7 @@ Built by a parent for his own kids and shared free (MIT). No accounts, no email,
 ## Capabilities and Constraints
 
 - Vanilla JS, no build step, zero npm runtime dependencies; strict CSP (`script-src 'self'`, no third-party requests, no external fonts).
-- Collect only first names/nicknames and optional grade labels. Parent-managed family use only, not classrooms.
+- Collect only first names/nicknames and optional grade labels. Parent-managed family use only; class lists are single-admin publishing feeds, never school accounts or rosters.
 - Speech: cloud voice with device-voice fallback; sounds must never play before a user gesture.
 - Practice data loads and saves online only; the PWA caches the public shell only.
 - Limits per family are bounded (10 kids, 200 lists, 300 verses, etc.).

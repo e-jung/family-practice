@@ -47,7 +47,9 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (request.method !== 'GET') return;
-  // All navigations use the generic shell, never store /f/<private-code> or query strings.
+  // Share/class navigations keep their route-specific noindex metadata. Never cache bearer links.
+  if(request.mode === 'navigate' && /^\/[sc]\//.test(url.pathname)){event.respondWith(fetch(request,{cache:'no-store'}));return;}
+  // All other navigations use the generic shell, never store /f/<private-code> or query strings.
   if (request.mode === 'navigate') {
     event.respondWith(caches.open(SHELL_CACHE).then(async cache => (await cache.match('/')) || fetch(request)));
   } else if (!url.search && SHELL.includes(url.pathname)) {

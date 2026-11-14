@@ -173,7 +173,7 @@ async function reviewJourney(page,code) {
 }
 try {
   for(const width of [1440,390]) {
-    const context=await browser.newContext({viewport:{width,height:width===390?844:1000},...(width===390?{isMobile:true,hasTouch:true}:{})});
+    const context=await browser.newContext({extraHTTPHeaders:{'CF-Connecting-IP':`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`},viewport:{width,height:width===390?844:1000},...(width===390?{isMobile:true,hasTouch:true}:{})});
     const page=await context.newPage();
     page.setDefaultTimeout(10000);
     page.on('pageerror',e=>errors.push(e.message));
@@ -338,7 +338,7 @@ try {
   }
   // Key sounds: nothing loads or plays before a gesture; a tap then loads the CC0 tick.
   {
-    const context=await browser.newContext({viewport:{width:1280,height:800}});
+    const context=await browser.newContext({extraHTTPHeaders:{'CF-Connecting-IP':`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`},viewport:{width:1280,height:800}});
     const page=await context.newPage();
     page.on('pageerror',e=>errors.push(e.message));
     const samples=[];page.on('request',r=>{if(r.url().includes('/audio/'))samples.push(r.url());});
@@ -359,7 +359,7 @@ try {
   }
   // iOS haptics: each button gets a native switch overlay; one tap clicks the button exactly once.
   {
-    const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,
+    const context=await browser.newContext({extraHTTPHeaders:{'CF-Connecting-IP':`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`},viewport:{width:390,height:844},isMobile:true,hasTouch:true,
       userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'});
     const page=await context.newPage();
     page.on('pageerror',e=>errors.push(e.message));

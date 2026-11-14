@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 const origin=process.env.SMOKE_URL || 'http://localhost:8792';
 if(!['localhost','127.0.0.1','[::1]'].includes(new URL(origin).hostname))throw Error('Smoke tests require localhost');
 let code='',cookie='',checks=0,requests=0;
+const smokeIp=`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`;
 const families=new Map();
 const check=(actual,expected)=>{assert.deepEqual(actual,expected);checks++;};
 async function req(path,data,options={}) {
   requests++;
-  const r=await fetch(origin+path,{method:data===undefined?'GET':'POST',headers:{'X-Family-Code':code,cookie,...(data===undefined?{}:{'Content-Type':'application/json'}),...options},body:data===undefined?undefined:JSON.stringify(data)});
+  const r=await fetch(origin+path,{method:data===undefined?'GET':'POST',headers:{'X-Family-Code':code,cookie,'CF-Connecting-IP':smokeIp,...(data===undefined?{}:{'Content-Type':'application/json'}),...options},body:data===undefined?undefined:JSON.stringify(data)});
   if(r.headers.has('set-cookie'))cookie=r.headers.get('set-cookie').split(';')[0];
   const text=await r.text();return {status:r.status,body:r.headers.get('Content-Type')?.includes('json')?JSON.parse(text):text};
 }

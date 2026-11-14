@@ -4,13 +4,14 @@ import {mkdir} from 'node:fs/promises';
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.SMOKE_URL || 'http://localhost:8792';
 if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname)) throw Error('Use disposable localhost only');
+const smokeHeaders={'CF-Connecting-IP':`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`};
 const out = process.argv[2] || '.tools/practice-fix';
 await mkdir(out, {recursive: true});
 const browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox']});
 const errors = [];
 let code;
 try {
-  const seed = await browser.newPage();
+  const seed = await browser.newPage({extraHTTPHeaders:smokeHeaders});
   await seed.goto(origin + '/privacy');
   code = await seed.evaluate(async () => {
     let code = '';

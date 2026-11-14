@@ -35,6 +35,7 @@ export class ShareStore {
    CREATE INDEX IF NOT EXISTS shared_weeks_slug ON shared_weeks(slug,published_at);
    CREATE TABLE IF NOT EXISTS shared_followers(slug TEXT NOT NULL,owner TEXT NOT NULL,PRIMARY KEY(slug,owner));
    CREATE TABLE IF NOT EXISTS shared_reports(slug TEXT NOT NULL,ip TEXT NOT NULL,day TEXT NOT NULL,PRIMARY KEY(slug,ip,day));`);
+  if(![...this.sql.exec('PRAGMA table_info(shared_reports)')].some(c=>c.name==='reason'))this.sql.exec("ALTER TABLE shared_reports ADD COLUMN reason TEXT NOT NULL DEFAULT ''");
  }
  fetch(request) {return this.ctx.blockConcurrencyWhile(async()=>{try {
   const p=new URL(request.url).pathname,b=await request.json(),all=(q,...args)=>[...this.sql.exec(q,...args)],get=(q,...args)=>all(q,...args)[0];
@@ -52,6 +53,7 @@ export class ShareStore {
    return json({[b.kind]:fields(get('SELECT * FROM shared_items WHERE slug=?',slug)),url:(b.kind==='share'?'/s/':'/c/')+slug},201);
   }
   if(p==='/list')return json({[b.kind==='class'?'classes':'shares']:all('SELECT * FROM shared_items WHERE owner=? AND kind=? ORDER BY created_at DESC,rowid DESC',owner(),b.kind).map(r=>({...fields(r),...(r.kind==='class'?{latest:latest(r.slug)}:{})}))});
+  if(p==='/stats')return json({shares:get("SELECT COUNT(*) n FROM shared_items WHERE kind='share'").n,classes:get("SELECT COUNT(*) n FROM shared_items WHERE kind='class'").n,imports:get('SELECT COALESCE(SUM(imports),0) n FROM shared_items').n,reports:get('SELECT COALESCE(SUM(reports),0) n FROM shared_items').n});
   if(p==='/stop-all'){this.sql.exec('UPDATE shared_items SET stopped=1 WHERE owner=?',owner());this.sql.exec('DELETE FROM shared_followers WHERE owner=?',b.owner);return json({ok:true});}
   if(p==='/latest') {
    if(!Array.isArray(b.slugs)||b.slugs.length>50||b.slugs.some(slug=>!validSlug(slug)))fail('Invalid classes');
@@ -81,8 +83,9 @@ export class ShareStore {
   }
   if(p==='/report') {
    if(!/^[a-f0-9]{64}$/.test(b.ip||''))fail('Invalid report');
+   const reason=text(b.reason??'',300,true);
    const today=new Date().toISOString().slice(0,10);this.sql.exec('DELETE FROM shared_reports WHERE day<?',new Date(Date.now()-86400000).toISOString().slice(0,10));
-   if(!get('SELECT slug FROM shared_reports WHERE slug=? AND ip=? AND day=?',b.slug,b.ip,today)){this.sql.exec('INSERT INTO shared_reports VALUES(?,?,?)',b.slug,b.ip,today);this.sql.exec('UPDATE shared_items SET reports=reports+1 WHERE slug=?',b.slug);}
+   if(!get('SELECT slug FROM shared_reports WHERE slug=? AND ip=? AND day=?',b.slug,b.ip,today)){this.sql.exec('INSERT INTO shared_reports(slug,ip,day,reason) VALUES(?,?,?,?)',b.slug,b.ip,today,reason);this.sql.exec('UPDATE shared_items SET reports=reports+1 WHERE slug=?',b.slug);}
    return json({ok:true});
   }
   if(p==='/import'){owner();this.sql.exec('UPDATE shared_items SET imports=imports+1 WHERE slug=?',b.slug);return json({ok:true});}
@@ -161,7 +164,7 @@ export function createSharing(ctx,env,{all,get,addList,addVerse,tx}) {
     if(method==='PATCH'&&!old)fail('Follow not found',404);
     if(!old&&get('SELECT COUNT(*) n FROM class_follows').n>=50)fail('Maximum 50 followed classes');
     const selected=kids(b.kids??(old?JSON.parse(old.kids):null)),withVerse=include(b.include_verse??(old?!!old.include_verse:false));
-    const data=await call('/read',{slug,kind:'class'});await call('/follow',{slug,enabled:true});
+    await reserve('sharing-read');const data=await call('/read',{slug,kind:'class'});await call('/follow',{slug,enabled:true});
     sql.exec('INSERT INTO class_follows(slug,kids,include_verse,cached,checked_at) VALUES(?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET kids=excluded.kids,include_verse=excluded.include_verse,cached=excluded.cached,checked_at=excluded.checked_at',slug,JSON.stringify(selected),+withVerse,JSON.stringify({available:true,name:data.class.name,latest:data.latest}),Date.now());
     if(!old){const last={};for(const imported of all('SELECT kid_id,week_id FROM shared_imports WHERE slug=? ORDER BY rowid',slug))last[imported.kid_id]=imported.week_id;sql.exec('UPDATE class_follows SET last_imported=? WHERE slug=?',JSON.stringify(last),slug);}
     return {follow:(await follows()).follows.find(f=>f.slug===slug)};
@@ -169,5 +172,15 @@ export function createSharing(ctx,env,{all,get,addList,addVerse,tx}) {
   }
   return undefined;
  }
- return {route,read,importShared,stopAll:()=>call('/stop-all')};
+ function removeKid(id){
+  const empty=[];
+  for(const follow of all('SELECT * FROM class_follows')){
+   const selected=JSON.parse(follow.kids).filter(k=>k!==id),last=JSON.parse(follow.last_imported);delete last[id];
+   if(!selected.length){sql.exec('DELETE FROM class_follows WHERE slug=?',follow.slug);empty.push(follow.slug);}
+   else sql.exec('UPDATE class_follows SET kids=?,last_imported=? WHERE slug=?',JSON.stringify(selected),JSON.stringify(last),follow.slug);
+  }
+  return empty;
+ }
+ async function detach(slugs){for(const slug of slugs)try{await call('/follow',{slug,enabled:false});}catch{/* Counter cleanup must not reverse successful family data deletion. */}}
+ return {route,read,importShared,follows,removeKid,detach,stopAll:()=>call('/stop-all')};
 }

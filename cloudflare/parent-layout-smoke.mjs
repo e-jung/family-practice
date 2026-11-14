@@ -5,12 +5,13 @@ import {mkdir, writeFile} from 'node:fs/promises';
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = new URL(process.env.SMOKE_URL || 'http://localhost:8792').origin;
 if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname)) throw Error('Use disposable localhost only');
+const smokeHeaders={'CF-Connecting-IP':`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`};
 const out = process.argv[2] || '.tools/parent-mcp';
 await mkdir(out, {recursive: true});
 const browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox']});
 const errors = [], external = [], report = [];
 const pin = '2468', listTitle = 'Sixteen word smoke list', verseReference = 'Psalm 23:1';
-const sections = ['Kids', 'Spelling lists', 'Bible verses', 'This device', 'Family', 'Connect an AI assistant'];
+const sections = ['Kids', 'Spelling lists', 'Bible verses', 'Shared lists', 'Class lists', 'Following', 'This device', 'Family', 'Connect an AI assistant'];
 let fixture, code;
 async function call(context, path, data) {
   const response = await context.request.post(origin + path, {headers: {'X-Family-Code': code || ''}, data});
@@ -64,7 +65,7 @@ async function editDialog(page, kind, label) {
   await dialog.waitFor({state: 'hidden'});
 }
 try {
-  fixture = await browser.newContext();
+  fixture = await browser.newContext({extraHTTPHeaders:smokeHeaders});
   code = (await call(fixture, '/api/families', {pin})).code;
   await call(fixture, '/api/parent/unlock', {pin});
   await call(fixture, '/api/admin/kids', {name: 'Layout kid', grade: '3'});
@@ -76,7 +77,7 @@ try {
   await call(fixture, '/api/admin/verses', {kid_id: kid.id, reference: verseReference, text: 'The LORD is my shepherd; I shall not want.', translation: 'KJV', due_date: '2026-11-20'});
   for (const viewport of [{width: 390, height: 844}, {width: 360, height: 740}, {width: 1440, height: 1000}]) {
     const label = `${viewport.width}x${viewport.height}`;
-    const context = await browser.newContext({viewport, isMobile: viewport.width < 600, hasTouch: viewport.width < 600, reducedMotion: 'reduce'});
+    const context = await browser.newContext({extraHTTPHeaders:smokeHeaders,viewport, isMobile: viewport.width < 600, hasTouch: viewport.width < 600, reducedMotion: 'reduce'});
     // APIRequestContext shares the browser context's cookie jar; no forged cookie.
     await call(context, '/api/parent/unlock', {pin});
     await context.addInitScript(code => {
@@ -141,7 +142,7 @@ try {
   assert.deepEqual(errors, [], 'no browser page errors');
   assert.deepEqual(external, [], 'no third-party browser requests');
   await writeFile(`${out}/parent-layout-report.json`, JSON.stringify({viewports: ['390x844', '360x740', '1440x1000'], dialogs: report, errors, external}, null, 2));
-  console.log(`PASS: three kid tabs; dedicated Parent page and separate Lock; all six parent sections; list/verse dialogs including dates and Save/Cancel fit without page scrolling; created connection URLs captured at 390×844, 360×740, 1440×1000. Screenshots: ${out}`);
+  console.log(`PASS: three kid tabs; dedicated Parent page and separate Lock; all nine parent sections; list/verse dialogs including dates and Save/Cancel fit without page scrolling; created connection URLs captured at 390×844, 360×740, 1440×1000. Screenshots: ${out}`);
 } finally {
   if (fixture && code) {
     try {

@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {emptyFixture} from '../fixture-support.js';
 import worker,{ShareStore} from '../worker.js';
 import {ownerHash,safeSnapshot,validSlug,generateShareSlug,sharedSlug} from '../sharing.js';
-import {sha256} from '../auth.js';
+import {sha256,CODE_WORDS} from '../auth.js';
 
 async function setup(t) {
  const f=emptyFixture(t),db=new DatabaseSync(':memory:');t.after(()=>db.close());
@@ -85,7 +85,8 @@ test('reports are anonymous aggregate counts, deduplicated per IP/day; creation 
  const {f,db,list,raw}=await setup(t);const slug=ok(await f.req('/api/admin/shares',{list_id:list})).share.slug;
  for(let i=0;i<3;i++)ok(await raw('/api/report/'+slug,{method:'POST',data:{},code:'',cookie:''}));
  assert.equal(db.prepare('SELECT reports FROM shared_items').get().reports,1);
- ok(await raw('/api/report/'+slug,{method:'POST',data:{},headers:{'CF-Connecting-IP':'198.51.100.8'}}));assert.equal(db.prepare('SELECT reports FROM shared_items').get().reports,2);
+ ok(await raw('/api/report/'+slug,{method:'POST',data:{reason:'Wrong content'},headers:{'CF-Connecting-IP':'198.51.100.8'}}));assert.equal(db.prepare('SELECT reports FROM shared_items').get().reports,2);
+ assert.equal(db.prepare("SELECT reason FROM shared_reports WHERE reason<>''").get().reason,'Wrong content');
  for(let i=0;i<117;i++)assert.equal((await raw('/api/share/'+slug,{code:'',cookie:''})).status,200);
  assert.equal((await raw('/api/share/'+slug,{code:'',cookie:''})).status,429);
  assert.equal((await raw('/api/share/'+slug,{code:'',cookie:'',headers:{'CF-Connecting-IP':'198.51.100.9'}})).status,200);
@@ -148,13 +149,58 @@ test('follow polling batches multiple classes into one store request and caches 
  const a=ok(await f.req('/api/admin/classes',{name:'A'})).class.slug,b=ok(await f.req('/api/admin/classes',{name:'B'})).class.slug;
  for(const slug of [a,b]){ok(await f.req('/api/admin/classes/'+slug+'/publish',{list_id:list}));ok(await f.req('/api/admin/follows',{slug,kids:[1]}));}
  let count=x.reads;ok(await f.req('/api/follows'));assert.equal(x.reads,count);
- f.db.prepare('UPDATE class_follows SET checked_at=0').run();const data=ok(await f.req('/api/follows'));assert.equal(data.follows.length,2);assert.equal(x.reads,count+1);
+ f.db.prepare('UPDATE class_follows SET checked_at=0').run();ok(await f.req('/api/state'));const data=ok(await f.req('/api/follows'));assert.equal(data.follows.length,2);assert.equal(x.reads,count+1);
  count=x.reads;ok(await f.req('/api/follows'));assert.equal(x.reads,count);
  await f.req('/api/parent/lock',{});ok(await f.req('/api/follows?refresh=1'));assert.equal(x.reads,count,'kid refresh cannot bypass cache');
  await f.req('/api/parent/unlock',{pin:'5678'});ok(await f.req('/api/follows?refresh=1'));assert.equal(x.reads,count+1);
 });
 
 test('slugs have three curated compounds and base32 suffix, support URLs, and do not reuse family-code format',()=>{
+ // Prefix-free original words make concatenated pairs unambiguous, preserving
+ // all six independent 11-bit choices rather than merely assuming entropy.
+ const sorted=[...new Set(CODE_WORDS)].sort();assert.equal(sorted.length,2048);
+ for(let i=1;i<sorted.length;i++)assert.ok(!sorted[i].startsWith(sorted[i-1]));
+ assert.ok(6*Math.log2(sorted.length)+4*Math.log2(32)>=60);
  const generated=new Set();for(let i=0;i<100;i++){const slug=generateShareSlug();assert.ok(validSlug(slug));assert.equal(slug.split('-').length,4);assert.match(slug.split('-')[3],/^[a-z2-7]{4}$/);assert.equal(sharedSlug('https://family.example/s/'+slug),slug);assert.equal(sharedSlug(slug),slug);generated.add(slug);}assert.equal(generated.size,100);
  for(const bad of ['bad','../other','https://family.example/f/private','https://user:pass@family.example/s/anything'])assert.throws(()=>sharedSlug(bad));
 });
+
+ test('report reasons are bounded and malformed public reports never increment counts',async t=>{
+ const {f,db,list,raw}=await setup(t);const slug=ok(await f.req('/api/admin/shares',{list_id:list})).share.slug;
+ for(const reason of ['x'.repeat(301),false,{},42])assert.equal((await raw('/api/report/'+slug,{method:'POST',data:{reason},code:'',cookie:''})).status,400);
+ assert.equal((await raw('/api/report/'+slug,{method:'POST',data:{reason:'x'.repeat(5000)},code:'',cookie:''})).status,413);
+ assert.equal(db.prepare('SELECT reports FROM shared_items').get().reports,0);
+ ok(await raw('/api/report/'+slug,{method:'POST',data:{reason:'x'.repeat(300)},code:'',cookie:''}));
+ assert.equal(db.prepare('SELECT reason FROM shared_reports').get().reason.length,300);
+ });
+
+ test('ops sharing totals expose numeric aggregates only',async t=>{
+ const {f,list,raw}=await setup(t);f.env.OPS_TOKEN='local-ops';
+ const slug=ok(await f.req('/api/admin/shares',{list_id:list})).share.slug;
+ ok(await f.req('/api/admin/classes',{name:'A feed'}));
+ ok(await f.req('/api/admin/import-shared',{slug,kids:[2]}));
+ ok(await raw('/api/report/'+slug,{method:'POST',data:{reason:'A report'}}));
+ const stats=ok(await raw('/api/ops/stats',{headers:{Authorization:'Bearer local-ops'}}));
+ assert.deepEqual(stats.sharing,{shares:1,classes:1,imports:1,reports:1});
+ assert.ok(!JSON.stringify(stats).includes(slug));
+ });
+
+ test('kid removal and backup replacement cannot transfer follows to reused kid IDs',async t=>{
+ const {f,db,list}=await setup(t);const slug=ok(await f.req('/api/admin/classes',{name:'Feed'})).class.slug;
+ ok(await f.req('/api/admin/classes/'+slug+'/publish',{list_id:list}));
+ ok(await f.req('/api/admin/follows',{slug,kids:[1,2]}));
+ ok(await f.req('/api/admin/import-shared',{slug,kids:[2]}));
+ ok(await f.req('/api/admin/remove-kid',{id:2}));
+ let follow=ok(await f.req('/api/follows')).follows[0];assert.deepEqual(follow.kids,[1]);assert.deepEqual(follow.last_imported,{});
+ ok(await f.req('/api/admin/kids',{name:'Replacement'}));assert.deepEqual(ok(await f.req('/api/follows')).follows[0].kids,[1]);
+ ok(await f.req('/api/admin/remove-kid',{id:1}));assert.deepEqual(ok(await f.req('/api/follows')).follows,[]);assert.equal(db.prepare('SELECT COUNT(*) n FROM shared_followers').get().n,0);
+ ok(await f.req('/api/admin/follows',{slug,kids:[2]}));
+ const backup=ok(await f.req('/api/admin/export'));ok(await f.req('/api/admin/import',backup));
+ assert.deepEqual(ok(await f.req('/api/follows')).follows,[]);assert.equal(db.prepare('SELECT COUNT(*) n FROM shared_followers').get().n,0);
+ });
+ test('following class writes obey the public-read IP quota',async t=>{
+ const {f,list}=await setup(t);const slug=ok(await f.req('/api/admin/classes',{name:'Feed'})).class.slug;
+ ok(await f.req('/api/admin/classes/'+slug+'/publish',{list_id:list}));
+ for(let i=0;i<120;i++)ok(await f.req('/api/admin/follows',{slug,kids:[1]}));
+ assert.equal((await f.req('/api/admin/follows',{slug,kids:[1]})).status,429);
+ });

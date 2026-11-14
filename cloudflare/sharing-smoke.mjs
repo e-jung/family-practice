@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 const origin=process.env.SMOKE_URL||'http://localhost:8792';
 if(!['localhost','127.0.0.1','[::1]'].includes(new URL(origin).hostname))throw Error('Disposable localhost only');
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+const smokeIp=`198.18.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*254)+1}`;
 const family=()=>({code:'',cookie:''});const a=family(),b=family();
 async function req(f,path,data,method=data===undefined?'GET':'POST') {
- const r=await fetch(origin+path,{method,headers:{'Content-Type':'application/json','X-Family-Code':f.code,Cookie:f.cookie,'CF-Connecting-IP':'192.0.2.200'},body:data===undefined?undefined:JSON.stringify(data)});
+ const r=await fetch(origin+path,{method,headers:{'Content-Type':'application/json','X-Family-Code':f.code,Cookie:f.cookie,'CF-Connecting-IP':smokeIp},body:data===undefined?undefined:JSON.stringify(data)});
  if(r.headers.has('set-cookie'))f.cookie=r.headers.get('set-cookie').split(';')[0];
  const body=r.headers.get('Content-Type')?.includes('json')?await r.json():await r.text();
  return {status:r.status,body,headers:r.headers};
@@ -21,7 +22,7 @@ try{
  const publicShare=(await ok(anonymous,'/api/share/'+slug)).share;
  eq(publicShare.words[0].sentence,'A friend is kind.');
  for(const field of ['kid_id','family','family_code','progress','pin','owner'])eq(publicShare[field],undefined);
- const shell=await req(anonymous,'/s/'+slug);eq(shell.status,200);eq(shell.headers.get('X-Robots-Tag'),'noindex');assert.match(shell.body,/<meta name="robots" content="noindex"/);checks++;
+ const shell=await req(anonymous,'/s/'+slug);eq(shell.status,200);assert.match(shell.headers.get('X-Robots-Tag'),/\bnoindex\b/);checks++;assert.match(shell.body,/<meta name="robots" content="noindex"/);checks++;
  eq((await req(b,'/api/admin/shares/'+slug+'/stop',{})).status,404);
  const klass=await ok(a,'/api/admin/classes',{name:'Weekly class'},201);cls=klass.class.slug;
  const published=await ok(a,'/api/admin/classes/'+cls+'/publish',{list_id:list.id,verse_id:verse.id});firstWeek=published.week.week_id;publishedAt=Date.now();

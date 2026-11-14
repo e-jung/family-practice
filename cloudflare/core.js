@@ -397,7 +397,7 @@ export function createHandler(ctx, env) {
     try {
       tx(() => {
         sql.exec("DELETE FROM shared_imports; DELETE FROM word_bank");
-        sql.exec("UPDATE class_follows SET last_imported='{}'");
+        sql.exec("DELETE FROM class_follows");
         for (const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`);
         for (const t of tables) {
           const cols = schemas[t].map((c) => c.name);
@@ -545,6 +545,9 @@ export function createHandler(ctx, env) {
       }
       if(p==='/api/admin/connections/revoke-all' && method==='POST'){await body(req,2048);sql.exec('DELETE FROM mcp_connections');sql.exec("DELETE FROM mcp_limits WHERE key LIKE 'token:%'");return json({ok:true});}
       if (p === "/api/state" && method === "GET") {
+        // Refresh followed-class metadata on family load; cache coalesces all feeds
+        // into one store request per ten minutes. Sharing outages must not block practice.
+        if(env.SHARES)try{await sharing.follows();}catch{}
         const kids = all("SELECT * FROM kids WHERE archived=0 ORDER BY id");
         const kid = url.searchParams.has("kid")
           ? integer(url.searchParams.get("kid"))
@@ -814,12 +817,13 @@ export function createHandler(ctx, env) {
         res.setHeader("Set-Cookie",cookie("",0)); return json({ok:true});
       }
       if (p === "/api/admin/remove-kid" && method === "POST") {
-        const b=await body(req), id=integer(b.id);
+        const b=await body(req), id=integer(b.id);let detached=[];
         tx(()=>{
+          detached=sharing.removeKid(id);
           for(const t of ["shared_imports","word_bank","attempts","verse_attempts","sessions"]) run(`DELETE FROM ${t} WHERE kid_id=?`,id);
           run("DELETE FROM words WHERE list_id IN (SELECT id FROM lists WHERE kid_id=?)",id);
           for(const t of ["lists","verses","kids"]) run(`DELETE FROM ${t} WHERE ${t==='kids'?'id':'kid_id'}=?`,id);
-        }); return json({ok:true});
+        });await sharing.detach(detached);return json({ok:true});
       }
       if (p === "/api/admin/sample" && method === "POST") {
         const b=await body(req), k=b.kid_id || get("SELECT id FROM kids WHERE archived=0 ORDER BY id LIMIT 1")?.id;
@@ -905,7 +909,9 @@ export function createHandler(ctx, env) {
         return json(b);
       }
       if (p === "/api/admin/import" && method === "POST") {
+        const followed=all('SELECT slug FROM class_follows').map(f=>f.slug);
         importBackup(await body(req, 2 * 1024 * 1024));
+        await sharing.detach(followed);
         return json({ ok: true });
       }
       if (p.startsWith("/api/")) fail("Route not found", 404);

@@ -10,6 +10,7 @@ await mkdir(out, {recursive:true});
 const browser = await chromium.launch({headless:true, executablePath:process.env.CHROMIUM_PATH || undefined, args:['--no-sandbox']});
 const errors = [], external = [], csp = [], screenshots = [], families = [];
 const pin = '2468', title = 'Kind words for the week', className = 'Weekly word garden';
+const suiteOctet=Math.floor(Math.random()*256);
 const viewports = [{width:1440,height:1000},{width:390,height:844}];
 let assertions = 0;
 function check(value, message) {assert.ok(value,message);assertions++;}
@@ -20,9 +21,9 @@ async function api(family, path, data, method = data === undefined ? 'GET' : 'PO
   return body;
 }
 async function contextFor(viewport, label) {
-  const context = await browser.newContext({viewport,isMobile:viewport.width<600,hasTouch:viewport.width<600,reducedMotion:'reduce',serviceWorkers:'block',extraHTTPHeaders:{'CF-Connecting-IP':`192.0.2.${20+families.length}`}});
+  const context = await browser.newContext({viewport,isMobile:viewport.width<600,hasTouch:viewport.width<600,reducedMotion:'reduce',serviceWorkers:'block',extraHTTPHeaders:{'CF-Connecting-IP':`198.19.${suiteOctet}.${20+families.length}`}});
   await context.addInitScript(() => {
-    localStorage.setItem('family-practice-device',JSON.stringify({keySounds:false,haptics:false,keyboard:'auto'}));
+    if(location.protocol==='http:' || location.protocol==='https:')localStorage.setItem('family-practice-device',JSON.stringify({keySounds:false,haptics:false,keyboard:'auto'}));
     document.addEventListener('securitypolicyviolation',e => {window.__smokeCsp ||= [];window.__smokeCsp.push({directive:e.effectiveDirective,blocked:e.blockedURI});});
   });
   await context.route('**/*', async route => {
@@ -45,7 +46,7 @@ async function familyFixture(viewport, label, kidNames) {
   await api(family,'/api/parent/unlock',{pin});
   for (const name of kidNames) await api(family,'/api/admin/kids',{name});
   family.kids = (await api(family,'/api/state')).kids;
-  await context.addInitScript(code => localStorage.setItem('family-practice-code',code),family.code);
+  await context.addInitScript(code => {if(location.protocol==='http:' || location.protocol==='https:')localStorage.setItem('family-practice-code',code);},family.code);
   return family;
 }
 async function shot(page, label, dialog = false) {
@@ -182,6 +183,29 @@ try {
     check((await api(follower,`/api/state?kid=${follower.kids[0].id}`)).lists.length===before+1,'parent-unlocked ready card imports independent class copy');
     await reader.getByRole('heading',{name:'New week from your class',exact:true}).waitFor({state:'hidden'});
     await shot(reader,`new-week-imported-${size}`);
+    const freshContext=await contextFor(viewport,`new-family-${size}`);
+    const freshPage=await freshContext.newPage();
+    await goto(freshPage,new URL(shareURL).pathname,true);
+    await freshPage.getByRole('button',{name:'Add to my family',exact:true}).click();
+    await freshPage.getByRole('button',{name:'Create a new family',exact:true}).click();
+    const freshName=`Sharing onboarding ${size} ${Date.now()}`;
+    await freshPage.getByLabel('Family name (optional)',{exact:true}).fill(freshName);
+    await freshPage.getByLabel('Parent PIN (4–8 digits)',{exact:true}).fill(pin);
+    await freshPage.getByLabel('Repeat PIN',{exact:true}).fill(pin);
+    await freshPage.getByRole('button',{name:'Create & continue',exact:true}).click();
+    await freshPage.getByRole('dialog',{name:'Keep your family code',exact:true}).waitFor();
+    const fresh={context:freshContext,code:await freshPage.evaluate(()=>localStorage.getItem('family-practice-code')),name:freshName};families.push(fresh);
+    check(!!fresh.code,'new family saves its code before continuing import');
+    await shot(freshPage,`new-family-code-${size}`,true);
+    await freshPage.getByRole('button',{name:'Continue to add the list',exact:true}).click();
+    await freshPage.getByLabel('Add your first kid',{exact:true}).fill('New reader');
+    await freshPage.getByLabel('Include Bible verse when available',{exact:true}).check();
+    await shot(freshPage,`new-family-import-${size}`,true);
+    await freshPage.getByRole('button',{name:'Add to family',exact:true}).click();
+    await freshPage.getByRole('dialog').waitFor({state:'hidden'});
+    const freshState=await api(fresh,'/api/state?kid=1');
+    check(freshState.lists.some(l=>l.title===title),'new family creation resumes original shared-list import');
+    check(freshState.verses.some(v=>v.reference==='John 11:35'),'new family import retains selected verse');
     for(const ctx of [owner.context,follower.context])for(const p of ctx.pages())csp.push(...await p.evaluate(()=>window.__smokeCsp || []));
   }
   assert.deepEqual(errors,[],'no browser JavaScript errors');

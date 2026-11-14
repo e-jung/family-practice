@@ -121,7 +121,13 @@ export default {
       const headers=new Headers(response.headers);
       headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
       headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','no-referrer');
-      if(/^\/[sc]\//.test(url.pathname))headers.set('X-Robots-Tag','noindex, nofollow');
+      if(/^\/[sc]\//.test(url.pathname)) {
+        headers.set('X-Robots-Tag','noindex, nofollow');
+        headers.set('Cache-Control','no-store');
+        headers.delete('ETag');headers.delete('Content-Length');
+        const shell=(await response.text()).replace('<head>','<head>\n    <meta name="robots" content="noindex" />');
+        return new Response(shell,{status:response.status,headers});
+      }
       if(url.pathname==='/sw.js') { headers.set('Cache-Control','no-cache, no-store, must-revalidate'); headers.set('Service-Worker-Allowed','/'); }
       return new Response(response.body,{status:response.status,headers});
     }
@@ -129,7 +135,11 @@ export default {
       if(!env.OPS_TOKEN || request.method!=='GET') return json({error:'Route not found'},404);
       const supplied=request.headers.get('Authorization')||'';
       if(!await equalSecret(supplied,'Bearer '+env.OPS_TOKEN)) return json({error:'Unauthorized'},401);
-      return env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/stats'));
+      const response=await env.REGISTRY.get(env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/stats'));
+      if(!env.SHARES || !response.ok)return response;
+      const stats=await response.json();
+      stats.sharing=await shareRequest(env,'/stats',{});
+      return json(stats);
     }
     if(!env.SESSION_SECRET || env.SESSION_SECRET.length<32 || !env.IP_HASH_SALT || env.IP_HASH_SALT.length<32) return json({error:'Service secrets are not configured'},503);
     if(['POST','PATCH','DELETE'].includes(request.method) && request.headers.get('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin write denied'},403);
@@ -142,7 +152,18 @@ export default {
       if(request.method!==(publicShare[1]==='report'?'POST':'GET'))return json({error:'Method not allowed'},405);
       if(publicShare[1]==='report'&&!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type')||''))return json({error:'Send JSON'},415);
       const limited=await limit('sharing-read');if(!limited.ok)return limited;
-      try {return json(await shareRequest(env,publicShare[1]==='report'?'/report':'/read',{slug:publicShare[2],ip,...(publicShare[1]==='report'?{}:{kind:publicShare[1]})}),200,{'X-Robots-Tag':'noindex, nofollow'});}
+      try {
+        let report={};
+        if(publicShare[1]==='report') {
+          const reader=request.body?.getReader(),chunks=[];let length=0;
+          if(reader)try{while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>4096){await reader.cancel();return json({error:'Report too large'},413);}chunks.push(value);}}finally{reader.releaseLock();}
+          const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+          const body=new TextDecoder().decode(bytes);
+          try{report=JSON.parse(body);}catch{return json({error:'Invalid JSON'},400);}
+          if(!report||typeof report!=='object'||Array.isArray(report)||report.reason!==undefined&&(typeof report.reason!=='string'||report.reason.length>300))return json({error:'Use a report reason of at most 300 characters'},400);
+        }
+        return json(await shareRequest(env,publicShare[1]==='report'?'/report':'/read',{slug:publicShare[2],ip,...(publicShare[1]==='report'?{reason:report.reason??''}:{kind:publicShare[1]})}),200,{'X-Robots-Tag':'noindex, nofollow'});
+      }
       catch(e){return json({error:e.status?e.message:'Sharing unavailable'},e.status||503,{'X-Robots-Tag':'noindex, nofollow'});}
     }
     if(url.pathname==='/api/families' && request.method==='POST') {

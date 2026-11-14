@@ -57,9 +57,6 @@ export function createSharingUI(ctx) {
     const data = await api('/api/admin/classes');
     if (!host.isConnected) return;
     const classes = data.classes || [];
-    const counts = await Promise.allSettled(classes.map(c=>c.stopped || c.stopped_at ? Promise.resolve(null) : publicApi(endpoint('c',c.slug))));
-    counts.forEach((result,i)=>{if(result.status === 'fulfilled' && result.value) classes[i].week_count = result.value.weeks?.length ?? 0;});
-    if(!host.isConnected)return;
     const canCreate = classes.filter(c=>!c.stopped && !c.stopped_at).length < 5;
     host.replaceChildren(section('Class lists',el('p',{},'A parent-managed publishing link for weekly practice. Followers choose their own kids; no student roster, names, or progress are shared.'),button('+ Create class list',()=>{
       if(!canCreate) throw Error('You can have up to five active class lists. Stop one before creating another.');
@@ -117,8 +114,8 @@ export function createSharingUI(ctx) {
       sheet('Create your family',[field('Family name (optional)',name),field('Parent PIN (4–8 digits)',pin),field('Repeat PIN',repeat),el('p',{},'No accounts or email. Save your family code and PIN; there is no recovery service.')],'Create & continue',async close=>{
         if(pin.value!==repeat.value)throw Error('The PINs do not match.');
         const result=await api('/api/families',{name:name.value.trim(),pin:pin.value});ctx.rememberFamily(result.code);await ctx.reload();close();
-        modal('Keep your family code',el('div',{},el('p',{},'Keep this code somewhere safe. It opens your private family space.'),el('strong',{class:'sharing-code'},result.code),button('Copy family code',async()=>{await navigator.clipboard.writeText(result.code);toast('Code copied.');},'secondary')));
-        await next();
+        const codeDialog=modal('Keep your family code',el('div',{},el('p',{},'Keep this code somewhere safe. It opens your private family space.'),el('strong',{class:'sharing-code'},result.code),button('Copy family code',async()=>{await navigator.clipboard.writeText(result.code);toast('Code copied.');},'secondary'),button('Continue to add the list',async()=>{codeDialog.close();await next();})));
+
       });
     },'secondary');
     const dialog=sheet('Add to your family',[el('p',{},'A parent needs a family space and Parent PIN to add shared practice.'),field('Your existing family code',code),start],'Continue',async close=>{await ctx.openFamily(code.value);close();await requireParent(next);});
@@ -146,7 +143,7 @@ export function createSharingUI(ctx) {
       document.title=(content.name || content.title || 'Shared practice')+' · Family Practice';
       if(kind==='s')body.replaceChildren(showWords(content),el('div',{class:'row'},button('Add to my family',()=>importContent(kind,slug,content)),button('Report this link',()=>report(kind,slug),'quiet')));
       else {
-        body.replaceChildren(el('h2',{},content.name),el('p',{},'Weekly practice, shared by a parent. Follow to see new weeks; a parent chooses what to add.'),el('div',{class:'row'},button('Follow class list',()=>requireParent(()=>chooseKids('Follow class list',content,async payload=>{await api('/api/admin/follows',{slug,...payload});toast('Following this class list.');},true)))),el('div',{class:'rows'},(content.weeks||result.weeks||[]).map(w=>el('article',{class:'shared-week'},showWords(w),button('Add this week',()=>importContent('c',slug,w),'secondary')))),!(content.weeks||result.weeks||[]).length?el('p',{},'No weeks published yet.'):null,button('Report this link',()=>report(kind,slug),'quiet'));
+        body.replaceChildren(...[el('h2',{},content.name),el('p',{},'Weekly practice, shared by a parent. Follow to see new weeks; a parent chooses what to add.'),el('div',{class:'row'},button('Follow class list',()=>requireParent(()=>chooseKids('Follow class list',content,async payload=>{await api('/api/admin/follows',{slug,...payload});toast('Following this class list.');},true)))),el('div',{class:'rows'},(content.weeks||result.weeks||[]).map(w=>el('article',{class:'shared-week'},showWords(w),button('Add this week',()=>importContent('c',slug,w),'secondary')))),!(content.weeks||result.weeks||[]).length?el('p',{},'No weeks published yet.'):null,button('Report this link',()=>report(kind,slug),'quiet')].filter(Boolean));
       }
       body.append(el('p',{class:'muted'},'No accounts, ads, or tracking. Shared links never expose kids or family progress.'),el('a',{href:'/'},'Go to Family Practice'));
     }catch(err){body.replaceChildren(el('h2',{},'This link is not available'),el('p',{role:'alert'},err.message),el('a',{href:'/'},'Go to Family Practice'));}
@@ -157,7 +154,7 @@ export function createSharingUI(ctx) {
       if(!host.isConnected)return;
       const follows=(data.follows || []).filter(f=>f.available && f.latest && (f.kids || []).includes(kidId) && String(f.last_imported?.[kidId] || '') !== String(f.latest.week_id));
       if(!follows.length){host.remove();return;}
-      host.replaceChildren(el('div',{class:'section-title'},el('h2',{},'New week from your class')),el('p',{class:'muted'},'Ask a parent to add the new words.'),...follows.map(f=>el('article',{class:'item'},el('div',{},el('h3',{},f.latest.title || f.latest.list?.title),el('p',{class:'meta'},f.name)),button('Add for '+get().kid.name,()=>requireParent(()=>chooseKids('Add this week',{...f.latest,kid_ids:[kidId],include_verse:f.include_verse},async payload=>{await api('/api/admin/import-shared',{slug:f.slug,week_id:f.latest.week_id,...payload});await ctx.reload();ctx.goPractice();toast('New week added.');})),'secondary'))));
+      host.replaceChildren(el('div',{class:'section-title'},el('h2',{},'New week from your class')),el('p',{class:'muted'},'Ask a parent to add the new words.'),...follows.map(f=>el('article',{class:'item'},el('div',{},el('h3',{},'New: '+(f.latest.title || f.latest.list?.title)+' is ready'),el('p',{class:'meta'},f.name+' · '+f.latest.words.length+' words'+(f.include_verse && f.latest.verse ? ' + verse' : ''))),button('Add for '+get().kid.name,()=>requireParent(()=>chooseKids('Add this week',{...f.latest,kid_ids:[kidId],include_verse:f.include_verse},async payload=>{await api('/api/admin/import-shared',{slug:f.slug,week_id:f.latest.week_id,...payload});await ctx.reload();ctx.goPractice();toast('New week added.');})),'secondary'))));
     }catch(err){host.replaceChildren(el('p',{class:'muted'},'Could not check followed lists.'),button('Try again',()=>newWeeks(host,kidId),'quiet small'));}
   }
   return {shareList,sourceMeta,sharedAdmin,classesAdmin,followsAdmin,publicPage,newWeeks};
