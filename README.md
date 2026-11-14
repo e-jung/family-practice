@@ -9,6 +9,8 @@ A free, open-source spelling and Bible-verse practice app, built by a parent for
 - **Progress:** first-try test accuracy, separate Learn history, verse mastery, and practice streaks.
 - **Phones:** install the Cloudflare build on your home screen; app shell loads offline, but family data and saving require internet.
 
+- Project status, roadmap and decisions: [STATUS.md](STATUS.md)
+
 ## Privacy
 
 No ads, analytics, trackers, email, or login provider. Use first names or nicknames only. A Family Code opens a family's practice; its Parent PIN protects editing and backups. Save both: there is no email recovery. Parents can export or delete their data.

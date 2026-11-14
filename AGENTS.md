@@ -1,6 +1,6 @@
 # AGENTS.md — Family Practice
 
-Read this before changing the project. Update this file when architecture or product constraints change. `CLAUDE.md` is a symlink to this file; preserve it.
+Read this before changing the project. Update this file when architecture or product constraints change. Project state, deploy/config, roadmap, decisions and changelog live in `STATUS.md`; update it in the same commit as any release, decision or roadmap change. `CLAUDE.md` is a symlink to this file; preserve it.
 
 ## Product and privacy
 

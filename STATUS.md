@@ -1,0 +1,77 @@
+# STATUS.md: project state, roadmap, decisions
+
+The durable, non-code record for Family Practice: what's live, how it's run, what's next, and why things are the way they are. `AGENTS.md` covers how the code works; `PRODUCT.md` and `DESIGN.md` cover product truth and the visual system.
+
+**Keep this current.** Any change that ships, any decision made, or any roadmap shift updates this file in the same commit. Write current truth; replace stale lines instead of appending. This repo is public: never put credentials, account IDs, family codes, real children's names, private network addresses or personal infrastructure details here.
+
+Last updated: 2026-11-14
+
+## Live
+
+- Hosted instance: https://spelling.jesklabs.com (listed as "spelling" on jesklabs.com; the in-app name is "Family Practice").
+- Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`), and Workers AI for speech. Migrations deployed: `v1`, `v2`.
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v5`.
+- Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
+- The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
+
+## Configuration
+
+| Item | Where | Notes |
+|---|---|---|
+| `SESSION_SECRET` | Worker secret | Signs parent cookies. **Keep stable**; rotating it logs out all parents. |
+| `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
+| `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
+| `TTS_SPEAKER` | Worker var (optional) | Aura-1 speaker; default `asteria`. |
+| `CF_API_TOKEN`, `CF_ACCOUNT_ID` | Deployer environment only | Token needs Workers Scripts edit (+ zone Workers Routes/DNS for the custom domain). Never a Worker binding. |
+| Custom domain | Workers Custom Domains | Attached once; `deploy.mjs` does not manage routes. `workers_dev = false`. |
+
+Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day global, 1,500/family/day, 2,000/IP/hour; family creation 5/hour/IP plus a global daily cap; unknown-code lookups and PIN failures throttled. Workers AI free allowance is 10,000 neurons/day (Aura-1 ≈ 1,364 neurons per 1k characters).
+
+## Release checklist
+
+1. `node --test` (all green).
+2. Local Worker (`cloudflare/deploy.md` → "Local real Worker"), then `node cloudflare/smoke.mjs`, `node cloudflare/ui-smoke.mjs`, and for layout changes `node cloudflare/practice-layout-smoke.mjs`.
+3. Bump `VERSION` in `cloudflare/public/sw.js` for any shell change.
+4. `node cloudflare/deploy.mjs --dry-run`, then deploy with credentials.
+5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
+6. Push `main`, add a changelog line below, and update "Live" if anything structural changed.
+
+## Roadmap
+
+**Next up**
+- Real-device pass on iPhone (installed PWA): header safe area, haptics, key sound, Aura playback after first tap.
+- Verse spaced repetition: extend the Leitner bank to verses, keyed by the current wording.
+- Parent view of the word bank: per-word box and due date, and the ability to retire or reset a word.
+
+**Later / ideas (need a decision before starting)**
+- Auto-generated kid-level example sentences for bare word lists: needs an LLM cost/quota review and parent review of the output.
+- A "daily practice" home: review due words, then the current list, then a verse, in one tap.
+- Backups: a gentle reminder to export, or optional encrypted cloud backup without collecting identity.
+- Teacher/class mode: **not planned**; it would reopen school student-privacy obligations (see decisions).
+- Rename in-app branding to match "spelling" on jesklabs.com: undecided.
+
+## Decisions
+
+Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
+
+- **2026-11-14: Learn stages scale with word length and never demote.** 1–3 letters get 2 stages, 4–5 get 3 and 6+ get 4. A miss shows the word, then retries the same stage. A first-try Fade jumps to Recall. *Why:* parent testing found the fixed 4–5 steps drawn-out and step-backs punitive.
+- **2026-11-14: Spaced repetition uses Leitner boxes (1/2/4/7/14/30 days), not FSRS.** *Why:* weekly spelling lists are small, and "this word is in box 2" is explainable to kids and parents. It is deterministic, cheap to compute in each family DO, and backfilled from history. FSRS suits large card decks.
+- **2026-11-14: Learn mode uses Copy–Cover–Compare and vanishing cues (fading letters).** *Why:* both are evidence-based spelling methods. Learn attempts are tracked separately so test accuracy stays honest.
+- **2026-11-14: Custom on-screen keyboard, key sound and haptics on touch devices, on by default.** This follows the approach in the author's Incord app. *Why:* the custom keyboard keeps OS autocorrect from interfering with spelling, and kids respond to tactile feedback. Each device can turn these off.
+- **2026-11-14: Visual system from an impeccable design pass** (`PRODUCT.md`, `DESIGN.md`). *Why:* it replaced a generic-AI look with focused practice screens for kids.
+- **2026-11-14: Open-sourced under MIT with fresh history.** *Why:* trust for parents and contributions. Earlier history contained personal details, so it was not published.
+- **2026-11-14: Installable PWA**; the shell is cached and family data stays online-only. *Why:* families use phones and tablets, and no family data should sit in shared caches.
+- **2026-11-13: Voice is Workers AI Deepgram Aura-1 with a two-tier cache.** *Why:* browser speech is poor or missing on Linux Chromium. MeloTTS is deprecated on 2026-11-20. The shared cache keeps the per-character pricing within the free tier.
+- **2026-11-13: Public, no accounts. Family Code plus per-family Parent PIN, first names only.** *Why:* zero setup friction and no identity data to protect. Lost code means lost data, which is mitigated by printable codes and exports. An earlier Google-login gate was removed.
+- **2026-11-13: Parents run it for their own kids, not schools.** *Why:* this avoids COPPA, FERPA and district vetting obligations.
+- **2026-11-13: Cloudflare Workers Free instead of a VPS or Vercel.** *Why:* the free tier with built-in SQLite DOs and AI, and a public kids' app shouldn't share a host with private services.
+- **2026-11-13: Parents paste verse text; no Bible API.** *Why:* translation licensing. Samples use public-domain KJV.
+- **2026-11-13: Zero npm runtime dependencies, vanilla JS, no build step.** *Why:* small, auditable, easy for agents and self-hosters.
+
+## Changelog (deploys)
+
+- 2026-11-14 `c6d0989`: Learn stages by length, no demotion, fast-track, skip to recall / start test; Leitner Review + word bank; safe-area practice band; kid-facing voice status removed; smoke cleans up in `finally`.
+- 2026-11-14 `fd730f7`: impeccable redesign, on-screen keyboard, key sound + haptics (default on).
+- 2026-11-14: PWA, mobile pass, Learn mode, ops stats, Workers Logs on; repo made public.
+- 2026-11-13: Aura-1 cloud voice + `TtsCache` (migration v2).
+- 2026-11-13: first public multi-family deploy.
