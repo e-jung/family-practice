@@ -312,7 +312,7 @@ before session completion. Learn attempts remain visible in parent attempt histo
 words and completed-test-list counts; they count toward practice streaks. Old backups default absent mode/
 step to test/0; invalid imported mode/step values are rejected.
 
-## Optional shared Jesklabs Accounts and notifications (pending cutover)
+## Optional shared Jesklabs Accounts and notifications
 
 Code/PIN-only families remain fully usable without an account. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use.
 
