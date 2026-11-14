@@ -1,0 +1,13 @@
+data/
+node_modules/
+.env
+*.db
+*.db-shm
+*.db-wal
+.tools/
+test/.tmp-*/
+
+cloudflare/.wrangler/
+cloudflare/.dev.vars
+
+.wrangler/

@@ -1,0 +1,22 @@
+services:
+  family-practice:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${LAN_BIND_IP:-127.0.0.1}:8088:8088"
+    environment:
+      PARENT_PIN: "${PARENT_PIN:-1234}"
+      PIPER_HOST: "${PIPER_HOST:-}"
+      PIPER_PORT: "${PIPER_PORT:-10200}"
+      PIPER_VOICE: "${PIPER_VOICE:-en_US-lessac-high}"
+    volumes:
+      - family-practice-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  family-practice-data:
