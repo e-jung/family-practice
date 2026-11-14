@@ -1,3 +1,4 @@
+import {createSharingUI} from "/sharing-ui.js";
 import {newLearnWord, advanceLearn} from "/learn.js";
 import {icon} from "/icons.js";
 import {createKeyboard} from "/keyboard.js";
@@ -78,13 +79,13 @@ function button(text, fn, cls = "") {
     text,
   );
 }
-async function api(p, data) {
+async function api(p, data, method = "POST") {
   const r = await familyFetch(
     p,
     data === undefined
       ? {}
       : {
-          method: "POST",
+          method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         },
@@ -363,6 +364,7 @@ function listActions(l, small = false) {
     button("Test", () => startSpelling(l.words, l), "secondary" + size),
     button("View words", () => wordSheet(l), "quiet" + size),
     state.parent ? button("Edit", () => editList(l), "quiet small") : null,
+    state.parent ? button("Share", () => sharing.shareList(l), "quiet small") : null,
     state.parent ? button(l.archived ? "Restore" : "Archive", () => archive("lists", l), "quiet small") : null,
   );
 }
@@ -374,6 +376,7 @@ function listCard(l) {
     ),
     el("div", { class: "packet-body" },
       el("p", {}, `${niceDate(l.date)}${l.sample ? " · sample list" : ""}. New this week? Learn the words first, then take the test.`),
+      sharing.sourceMeta(l),
       listActions(l),
     ),
   );
@@ -381,11 +384,15 @@ function listCard(l) {
 function listRow(l) {
   return el("article", { class: "item" },
     el("div", {}, el("h3", {}, l.title), el("span", { class: "meta" }, `${l.words.length} words · ${niceDate(l.date)}${l.archived ? " · archived" : ""}`)),
+    sharing.sourceMeta(l),
     listActions(l, true),
   );
 }
 function spellingHome() {
   const active = state.lists.filter((l) => !l.archived);
+  const updates = el("section", {class:"section sharing-updates", "aria-live":"polite"});
+  app.append(updates);
+  sharing.newWeeks(updates, kid.id);
   if (state.parent) app.append(el("div", { class: "row spread section" }, el("p", { class: "muted" }, "Parent mode: add or edit this week’s words."), button("+ Add spelling list", () => editList())));
   if (!active.length)
     app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "No spelling list yet")),
@@ -1002,7 +1009,7 @@ function modal(title, content) {
   d.showModal();
   return d;
 }
-function unlock() {
+function unlock(onUnlocked) {
   const pin = input("parent-pin", "", {
     type: "password",
     inputmode: "numeric",
@@ -1021,7 +1028,8 @@ function unlock() {
           await api("/api/parent/unlock", { pin: pin.value });
           d.close();
           await reload();
-          parentHome();
+          if (typeof onUnlocked === "function") await onUnlocked();
+          else parentHome();
           toast("Parent mode is unlocked.");
         } catch (err) {
           error.textContent = err.message;
@@ -1185,7 +1193,7 @@ function editKid(k) {
       }),
   );
 }
-const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Connect an AI assistant"];
+const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Connect an AI assistant", "Shared lists", "Class lists", "Following"];
 function parentHome() {
   if (!state.parent) return unlock();
   parentPage = true;
@@ -1200,6 +1208,10 @@ function parentHome() {
   app.append(el("nav", { class: "parent-nav", "aria-label": "Parent sections" }, PARENT_SECTIONS.map(name =>
     button(name, () => { parentSection = name; parentHome(); window.scrollTo(0, 0); }, name === parentSection ? "active" : "secondary"))));
   app.querySelector(".parent-nav .active")?.setAttribute("aria-current", "page");
+  if (["Shared lists", "Class lists", "Following"].includes(parentSection)) {
+    const host = el("div", {}, el("p", {}, "Loading…")); app.append(host);
+    sharing[parentSection === "Shared lists" ? "sharedAdmin" : parentSection === "Class lists" ? "classesAdmin" : "followsAdmin"](host).catch(err => host.replaceChildren(el("p", {role:"alert"}, err.message), button("Try again", parentHome, "secondary"))); return;
+  }
   if (parentSection === "Connect an AI assistant") { assistantControls(); return; }
   if (parentSection === "Spelling lists" || parentSection === "Bible verses") { parentPractice(); return; }
   const section = (title, ...children) => el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, title)), ...children);
@@ -1334,7 +1346,8 @@ function parentPractice() {
     button(isList ? "+ Add spelling list" : "+ Add Bible verse", () => isList ? editList() : editVerse()),
     el("div", { class: "rows section" }, items.map(item => el("div", { class: "row spread" },
       el("div", {}, el("strong", {}, isList ? item.title : item.reference), el("p", { class: "meta" }, (item.archived ? "Archived · " : "") + (isList ? `${item.words.length} words · ${niceDate(item.date)}` : item.text))),
-      el("div", { class: "row" }, button("Edit", () => isList ? editList(item) : editVerse(item), "secondary small"),
+      el("div", { class: "row" }, isList ? sharing.sourceMeta(item) : null, button("Edit", () => isList ? editList(item) : editVerse(item), "secondary small"),
+        isList ? button("Share", () => sharing.shareList(item), "secondary small") : null,
         button(item.archived ? "Restore" : "Archive", () => archive(isList ? "lists" : "verses", item), "quiet small"))))));
 }
 
@@ -1549,6 +1562,8 @@ function privacy() {
     el("p", {}, "Family Practice stores the profiles, spelling lists, Bible verses, practice answers, progress, and voice settings your family enters. Use first names or nicknames, not full names, school names, addresses, or other sensitive details."),
     el("h2", {}, "Your code is a key"),
     el("p", {}, "No tracking, no analytics, and no ads. You can delete your family anytime. Anyone with your family code can open your family’s practice and view its profiles and progress. It is not a public username. Share the code and join link privately with trusted family members only. Your parent PIN protects management actions, backups, and deletion; it does not hide practice from someone who knows your code."),
+    el("h2", {}, "Shared lists and class links"),
+    el("p", {}, "Parents can publish an unlisted, frozen copy of spelling words, sentences, an optional short note and a Bible verse. Anyone with that public link can read and import it. Never include personal details. Kids, family codes, PINs and practice history are not published. Stop a link in Parent mode; independent copies already imported by other families remain theirs. Following a class list keeps your chosen kids and verse preference private and only shows new weeks for a parent to add. Public links can be reported; reports are not automatic moderation."),
     el("h2", {}, "On this device"),
     el("p", {}, "This browser remembers your family code in local storage. Parent mode uses a cookie after you enter your PIN. Lock Parent mode when you finish on a shared device. Forgetting a family here removes its saved code, not its server data. Key sound, haptics, and on-screen keyboard choices are saved only in this browser."),
     el("h2", {}, "Speech & hosting"),
@@ -1566,7 +1581,13 @@ function privacy() {
       }, "secondary") : null),
   ));
 }
+const sharing = createSharingUI({el, button, field, input, textArea, modal, toast, api, app,
+  current: () => ({state, kid, familyCode}), reload, unlock, openFamily, rememberFamily, clearView,
+  goPractice: () => {parentPage = false; history.replaceState({}, "", "/"); render();},
+});
 (async () => {
+  const publicMatch = location.pathname.match(/^\/(s|c)\/([A-Za-z0-9_-]+)\/?$/);
+  if (publicMatch) { await sharing.publicPage(publicMatch[1], publicMatch[2]); return; }
   if (location.pathname === "/privacy" || location.pathname === "/privacy/") { privacy(); return; }
   const match = location.pathname.match(/^\/f\/([^/]+)\/?$/);
   if (match) {

@@ -1,8 +1,8 @@
 /* Bump VERSION for each shell release. Never cache family URLs or API data on disk. */
-const VERSION = 'v7';
+const VERSION = 'v8';
 const PREFIX = 'family-practice-shell-';
 const SHELL_CACHE = PREFIX + VERSION;
-const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/learn.js', '/pwa.js', '/feedback.js', '/keyboard.js', '/icons.js', '/fonts/practice-reader-regular.woff2', '/fonts/practice-reader-bold.woff2', '/fonts/barlow-condensed-semibold.woff2', '/fonts/barlow-condensed-bold.woff2', '/audio/interface-click-002.mp3', '/manifest.webmanifest', '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png'];
+const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/sharing-ui.js', '/qr.js', '/learn.js', '/pwa.js', '/feedback.js', '/keyboard.js', '/icons.js', '/fonts/practice-reader-regular.woff2', '/fonts/practice-reader-bold.woff2', '/fonts/barlow-condensed-semibold.woff2', '/fonts/barlow-condensed-bold.woff2', '/audio/interface-click-002.mp3', '/manifest.webmanifest', '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png'];
 const ttsMemory = new Map();
 const TTS_LIMIT = 24;
 const TTS_BYTES = 512 * 1024;

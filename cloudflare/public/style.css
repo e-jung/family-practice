@@ -405,3 +405,26 @@ body { overscroll-behavior: none; }
 input, textarea, select { font-size: max(1rem, 16px); }
 
 .hero-grid > *, .onboarding > * { min-width: 0; }
+
+/* Unlisted sharing: the same printed packets, with no identity or activity feed. */
+.sharing-link { min-width: 0; }
+.sharing-link input { width: 100%; font-size: 1rem; }
+.sharing-link .row { margin-block: 16px; }
+.sharing-qr { width: min(240px, 100%); margin: 20px auto; background: #fff; padding: 12px; }
+.sharing-qr svg { display: block; width: 100%; height: auto; }
+.sharing-check { display: flex; align-items: center; gap: 12px; min-height: 48px; font-family: "Practice Reader", sans-serif; }
+.sharing-check input { width: 24px; height: 24px; flex: 0 0 24px; }
+.shared-words { padding-left: 1.8em; }
+.shared-words li { padding: 12px 8px; border-bottom: 1px solid var(--rule); }
+.shared-words li p { margin: 4px 0; color: var(--ink-2); }
+.shared-week { padding-block: 24px; border-top: 2px solid var(--ink); }
+.shared-verse { border-left: 4px solid var(--madder); padding: 4px 18px; margin-block: 24px; }
+.source-meta { width: 100%; margin-block: 8px; }
+.sharing-code { display: block; overflow-wrap: anywhere; margin-block: 20px; font-size: 1.6rem; }
+.sharing-updates:empty { display: none; }
+.sharing-updates .item { padding-block: 12px; border-bottom: 1px solid var(--rule); }
+@media print {
+  .sharing-qr { break-inside: avoid; }
+  body.printing-share > :not(dialog[open]) { display: none !important; }
+  body.printing-share dialog[open] { position: static; width: 100%; max-height: none; box-shadow: none; overflow: visible; }
+}
