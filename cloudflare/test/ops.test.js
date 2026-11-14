@@ -39,7 +39,7 @@ test('Learn fade attempts persist separately and cannot inflate test progress or
   assert.equal(progress.attempts.length,4);assert.equal(progress.tricky.length,0);
   assert.equal(progress.streak,1);
   assert.equal(progress.listsCompleted,0);assert.equal(progress.charts[0].accuracy,0);assert.equal(progress.charts[0].total,0);
-  assert.deepEqual(progress.learning,{attempts:4,wordsLearned:1,sessionsCompleted:1});
+  assert.deepEqual(progress.learning,{attempts:4,skips:0,wordsLearned:1,sessionsCompleted:1});
   assert.deepEqual((await f.req('/api/ops/stats',undefined,auth)).body.attempts7,{test:0,learn:4,verse:0});
   const rows=f.db.prepare('SELECT mode,step FROM attempts').all();
   assert.equal(rows[3].step,100);assert.equal(rows[0].mode,'learn');

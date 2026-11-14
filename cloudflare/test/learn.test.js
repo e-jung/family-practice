@@ -30,6 +30,7 @@ test('learn requires a correct audio-only attempt and compares one easier clue a
   assert.equal(state.comparisons, 1);
   state = advanceLearn(advanceLearn(state, true), true);
   assert.equal(state.index, 2);
+  assert.deepEqual(state.completed, [0,1]);
   state = advanceLearn(state, false);
   assert.equal(state.index, 1);
   assert.equal(state.learned, false);

@@ -265,7 +265,7 @@ export function createHandler(ctx, env) {
           .map((s) => s.list_id),
       ).size,
       streak,
-      learning: {attempts: learning.length, wordsLearned: new Set(learning.filter(a => a.correct && a.step === 100).map(a => a.session_id + ":" + a.word_id)).size, sessionsCompleted: ss.filter(s => s.kind === "learn" && s.completed).length},
+      learning: {attempts: learning.filter(a=>a.step!=='skip').length, skips: learning.filter(a=>a.step==='skip').length, wordsLearned: new Set(learning.filter(a => a.correct && a.step === 100).map(a => a.session_id + ":" + a.word_id)).size, sessionsCompleted: ss.filter(s => s.kind === "learn" && s.completed).length},
       learnAttempts: learning.slice(-200).reverse(),
       charts,
       tricky: trickyWords(a),

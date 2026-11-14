@@ -68,6 +68,8 @@ test('skip marker never consumes a real recall try; explicit abandonment permits
   assert.equal((await send('skip')).body.first_try,false);
   assert.equal(f.db.prepare('SELECT correct,first_try FROM attempts').get().correct,0);
   assert.equal((await f.req('/api/review?kid=1')).body.words.length,0);
+  const progress=(await f.req('/api/progress?kid=1')).body;
+  assert.equal(progress.learning.attempts,0);assert.equal(progress.learning.skips,1);assert.equal(progress.learning.wordsLearned,0);
   assert.equal((await send(100)).body.first_try,true);
   assert.equal((await f.req('/api/review?kid=1')).body.words[0].box,2);
   const early=(await f.req('/api/sessions',{kid_id:1,kind:'learn',word_ids:[w.id]})).body.id;

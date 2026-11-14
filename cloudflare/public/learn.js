@@ -15,11 +15,12 @@ export function fadeSteps(word, random = Math.random) {
   });
 }
 export function newLearnWord(word, random = Math.random) {
-  return {steps: fadeSteps(word, random), index: 0, learned: false, comparisons: 0};
+  return {steps: fadeSteps(word, random), index: 0, completed: [], learned: false, comparisons: 0};
 }
 export function advanceLearn(state, correct) {
   if (state.learned) return state;
   if (!correct) return {...state, index: Math.max(0, state.index - 1), comparisons: state.comparisons + 1};
-  if (state.index === state.steps.length - 1) return {...state, learned: true};
-  return {...state, index: state.index + 1};
+  const completed = [...new Set([...(state.completed || []), state.index])];
+  if (state.index === state.steps.length - 1) return {...state, completed, learned: true};
+  return {...state, completed, index: state.index + 1};
 }

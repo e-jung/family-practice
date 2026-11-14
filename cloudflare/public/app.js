@@ -453,9 +453,9 @@ function learnStageIndicator(learning) {
   return el("div", {class: "learn-stage-progress"},
     el("p", {class: "stage-caption"}, `Stage ${learning.index + 1} of ${labels.length} · ${labels[learning.index]}`),
     el("ol", {class: "learn-stages", "aria-label": "Stages for this word"}, labels.map((label, i) =>
-      el("li", {class: i < learning.index ? "complete" : i === learning.index ? "current" : "", "aria-current": i === learning.index ? "step" : null},
-        el("span", {class: "stage-number", "aria-hidden": "true"}, i < learning.index ? "✓" : i + 1),
-        el("span", {}, label), el("span", {class: "visually-hidden"}, i < learning.index ? " · complete" : i === learning.index ? " · you are here" : " · next")))));
+      el("li", {class: i === learning.index ? "current" : learning.completed.includes(i) ? "complete" : "", "aria-current": i === learning.index ? "step" : null},
+        el("span", {class: "stage-number", "aria-hidden": "true"}, learning.completed.includes(i) ? "✓" : i + 1),
+        el("span", {}, label), el("span", {class: "visually-hidden"}, i === learning.index ? " · you are here" : learning.completed.includes(i) ? " · complete" : i < learning.index ? " · skipped" : " · next")))));
 }
 async function learnToTest(round) {
   const view = viewVersion;
@@ -533,7 +533,7 @@ function learnStep(round) {
       form,
       el("div", {class: "learn-shortcuts"},
         step.level !== 100 ? button("Skip to recall", async () => {
-          if (done) return;
+          clearTimeout(comparisonTimer);
           await api("/api/attempts", {session_id: round.session, word_id: w.id, typed: "", mode: "learn", step: "skip"});
           if (view !== viewVersion) return;
           round.learning = {...round.learning, index: round.learning.steps.length - 1};
@@ -867,7 +867,7 @@ async function progressHome() {
     app.append(el("div", { class: "section" },
       el("div", { class: "section-title" }, el("h2", {}, "First-try spelling accuracy")),
       p.charts.length ? drawChart(p.charts) : el("p", {}, "Take a spelling test and your first-try accuracy for each list shows up here."),
-      p.learning ? el("p", { class: "muted" }, `Learn practice, kept separate from test scores: ${p.learning.wordsLearned} words learned · ${p.learning.attempts} fading-cue attempts · ${p.learning.sessionsCompleted} completed rounds.`) : null,
+      p.learning ? el("p", { class: "muted" }, `Learn practice, kept separate from test scores: ${p.learning.wordsLearned} words learned · ${p.learning.attempts} fading-cue attempts · ${p.learning.skips || 0} skips · ${p.learning.sessionsCompleted} completed rounds.`) : null,
     ));
     if (state.parent && p.learnAttempts?.length) app.append(el("details", {},
       el("summary", {}, "Parent detail · recent Learn attempts"),

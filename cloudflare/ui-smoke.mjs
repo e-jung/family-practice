@@ -61,21 +61,29 @@ async function learnList(page) {
   if(await shuffle.count())await shuffle.uncheck();
   await page.getByRole('button',{name:'Start learning',exact:true}).click();
   for(const word of ['friend','light','kind','cat']) {
-    const stages=word.length<=3?['full','blank']:['full','25','50','75','blank'];
+    const stages=word.length<=3?[0,100]:[0,50,75,100];
     for(const stage of stages) {
       const answer=page.getByRole('textbox',{name:'Type the full word',exact:true});
       await answer.waitFor();
       await noOverflow(page,`Learn ${word}/${stage}`);
       assert.equal(await page.getByRole("button",{name:"Continue",exact:true,includeHidden:true}).isVisible(),false,"cannot skip an unsubmitted Learn cue");
-      const level = stage === 'full' ? 0 : stage === 'blank' ? 100 : Number(stage);
-      try { await page.getByText(new RegExp(`Learn · word .* · ${level}% hidden`)).waitFor(); }
+      const level=stage, index=stages.indexOf(stage), label={0:'Copy',50:'Fade',75:'Fade more',100:'Recall'}[stage];
+      try {
+        await page.getByText(`Stage ${index+1} of ${stages.length} · ${label}`,{exact:true}).waitFor();
+        const indicator=page.locator('ol.learn-stages');
+        assert.equal(await indicator.locator('li').count(),stages.length,'one indicator per stage');
+        assert.equal(await indicator.locator('[aria-current=step]').count(),1,'exactly one current stage');
+        assert.equal(await indicator.locator('[aria-current=step].current').count(),1,'current stage has the marigold current style, including after a miss');
+        assert.match(await indicator.locator('[aria-current=step]').innerText(),new RegExp(label),'current indicator names stage');
+        assert.equal(await page.getByRole('button',{name:'Skip to recall',exact:true}).isVisible().catch(()=>false),level!==100,'skip exists only before recall');
+      }
       catch (error) { console.log("Learn stage mismatch", {word,stage,visible:await page.locator("#app").innerText()}); throw error; }
-      if(word === 'friend' && stage === '25') {
+      if(word === 'friend' && stage === 50) {
         await answer.fill('frend');
         await page.getByRole('button',{name:'Check word'}).click();
         await page.getByText('Compare: friend. Next, try one easier clue.',{exact:true}).waitFor();
         await page.getByRole('button',{name:'Continue',exact:true}).click();
-        await page.getByText(/Learn · word .* · 0% hidden/).waitFor();
+        await page.getByText('Stage 1 of 4 · Copy',{exact:true}).waitFor();
         await page.getByRole('textbox',{name:'Type the full word',exact:true}).fill(word);
         await page.getByRole('button',{name:'Check word'}).click();
         await page.getByRole('button',{name:'Continue',exact:true}).click();
@@ -91,6 +99,78 @@ async function learnList(page) {
   assert.equal(await page.getByRole('textbox',{name:'Type the full word',exact:true}).count(),0,'Learn reaches its summary after every word and stage');
   await page.getByRole('button',{name:'Take the test now',exact:true}).click();
   await page.getByRole('button',{name:'Let’s begin'}).waitFor();
+  await page.getByRole('button',{name:'Back',exact:true}).click();
+  await list.getByRole('button',{name:'Learn',exact:true}).click();
+  await page.getByRole('button',{name:'Start learning',exact:true}).click();
+  await page.getByRole('button',{name:'Skip to recall',exact:true}).click();
+  await page.getByText('Stage 4 of 4 · Recall',{exact:true}).waitFor();
+  assert.equal(await page.locator('ol.learn-stages .complete').count(),0,'skipped cues are not falsely marked completed');
+  await page.getByRole('textbox',{name:'Type the full word',exact:true}).fill('friend');
+  await page.getByRole('button',{name:'Check word'}).click();
+  await page.getByText('Learned! You spelled it with no clues.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Continue',exact:true}).click();
+  await page.getByText('Stage 1 of 4 · Copy',{exact:true}).waitFor();
+  const skipResponse=page.waitForResponse(r=>r.request().method()==='POST' && r.url().endsWith('/api/attempts') && r.request().postDataJSON().step==='skip');
+  await page.getByRole('button',{name:'I know these — start the test',exact:true}).click();
+  assert.equal((await skipResponse).ok(),true,'Learn-to-Test skip is saved');
+  await page.getByRole('heading',{name:'Spelling test',exact:true}).waitFor();
+  await page.getByText('4 words. You’ll hear the word, a sentence, then the word again. You get one retry.',{exact:true}).waitFor();
+  assert.equal(await page.locator('.practice-band').getByText('Learn week',{exact:true}).count(),1,'skip keeps the same list');
+  const skipped=await page.evaluate(async()=>{const code=localStorage.getItem('family-practice-code');const r=await fetch('/api/admin/export',{headers:{'X-Family-Code':code}});return (await r.json()).attempts.filter(a=>a.step==='skip');});
+  assert.ok(skipped.length>=4,'recall shortcut and all remaining Learn words record skips');
+  assert.ok(skipped.every(a=>!a.correct && !a.first_try),'skips are not correct recall wins');
+  await page.getByRole('button',{name:'Let’s begin'}).waitFor();
+}
+async function reviewJourney(page,code) {
+  // Export/import is the supported fixture seam; never mutate SQLite directly.
+  const fixture=await page.evaluate(async code=>{
+    const call=async(path,data)=>{
+      const r=await fetch(path,{method:data===undefined?'GET':'POST',headers:{'X-Family-Code':code,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
+      if(!r.ok)throw Error(`${path}: ${r.status}`);return r.json();
+    };
+    const b=await call('/api/admin/export'), kid=b.kids.find(k=>k.name==='Alex');
+    const past=new Date(Date.now()-30*86400000).toISOString();
+    for(const row of [...b.attempts,...b.sessions])row.created_at=past;
+    delete b.wordBank; // Replay the deliberately aged attempt fixture.
+    await call('/api/admin/import',b);
+    const review=await call('/api/review?kid='+kid.id);
+    return {kidId:kid.id,review};
+  },code);
+  for(const key of ['due','nextDue','counts','struggling','dueSoon','words'])assert.ok(key in fixture.review,`review API exposes ${key}`);
+  assert.ok(fixture.review.due.length>0,'old attempts seed due reviews');
+  await page.reload();
+  await page.getByRole('button',{name:/Alex/}).click();
+  await page.getByRole('heading',{name:'Review',exact:true}).waitFor();
+  await page.getByText(`${fixture.review.due.length} words due today`,{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Start review',exact:true}).click();
+  await page.getByLabel('Shuffle the words').uncheck();
+  const started=page.waitForResponse(r=>r.url().endsWith('/api/sessions') && r.request().method()==='POST');
+  await page.getByRole('button',{name:'Let’s begin'}).click();
+  const sessionResponse=await started;
+  assert.equal(sessionResponse.request().postDataJSON().kind,'review','review is not a spelling test');
+  const session=await sessionResponse.json();
+  // Use the persisted session word selection with shuffle explicitly disabled.
+  const ordered=await page.evaluate(async({code,id})=>{
+    const r=await fetch('/api/admin/export',{headers:{'X-Family-Code':code}}), b=await r.json();
+    const row=b.sessions.find(s=>s.id===id);
+    return JSON.parse(row.word_ids).map(id=>b.words.find(w=>w.id===id).word);
+  },{code,id:session.id});
+  for(let i=0;i<ordered.length;i++) {
+    await page.getByLabel('Type the spelling word').fill(ordered[i]);
+    await page.getByRole('button',{name:'Check word'}).click();
+    await page.getByRole('button',{name:i===ordered.length-1?'See my results':'Next word',exact:true}).click();
+  }
+  await page.getByRole('button',{name:'Back to spelling',exact:true}).click();
+  await page.getByText(/^Nothing due — next review (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/).waitFor();
+  await page.getByRole('button',{name:'Progress',exact:true}).click();
+  await page.getByRole('heading',{name:'Word bank',level:2,exact:true}).waitFor();
+  const bank=await page.evaluate(async({code,kidId})=>{const r=await fetch('/api/review?kid='+kidId,{headers:{'X-Family-Code':code}});return r.json();},{code,kidId:fixture.kidId});
+  for(const [label,key] of [['Learning','learning'],['Getting it','gettingIt'],['Mastered','mastered']]) {
+    const count=page.locator('.bank-counts > div').filter({has:page.getByText(label,{exact:true})});
+    await count.waitFor();
+    assert.equal(await count.locator('dd').innerText(),String(bank.counts[key]),`${label} count agrees with review API`);
+  }
+  await noOverflow(page,'word bank');
 }
 try {
   for(const width of [1440,390]) {
@@ -136,6 +216,8 @@ try {
     await page.getByLabel('One word per line').fill('friend | My friend is kind.\nlight | Turn on the light.\nkind | Be kind to others.');
     await page.getByRole('button',{name:'Save',exact:true}).click();
     await page.getByRole('heading',{name:'Browser week',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Review',exact:true}).waitFor();
+    await page.getByText('Nothing due — learn or test some words to begin.',{exact:true}).waitFor();
     await page.getByRole('button',{name:'Test',exact:true}).click();
     await page.getByLabel('Shuffle the words').uncheck();await page.getByRole('button',{name:'Let’s begin'}).click();
     if(width===1440) {
@@ -225,6 +307,7 @@ try {
     }
     await learnList(page);
     await page.getByRole('button',{name:'Back',exact:true}).click();
+    await reviewJourney(page,code);
     if(width===390) {
       await page.setViewportSize({width:360,height:800});
       await noOverflow(page,'360px test setup');
@@ -294,5 +377,5 @@ try {
     await context.close();
   }
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  console.log(`PASS: ${journeys} complete desktop/mobile journeys, onboarding → kid/list → spelling → verse → progress → Learn → switch/join/privacy; manifest parsed, icons fetched, actual service worker activated; zero console/page errors or third-party requests. Cloud MP3 decoded/played; 503 and 4-second timeout fell back to instrumented device speech; device choice, blob reuse, initial two + one-ahead word/sentence prefetch, navigation cancellation and single-request spelling verified. Learn stages=${learnSteps}; on-screen key taps=${keyTaps}; key sound waits for a gesture; iOS switch overlay clicks once; Cloud requests=${cloudRequests}, mocked 503 requests=${fallbackRequests}. Speech not listened to by a human.`);
+  console.log(`PASS: ${journeys} complete desktop/mobile journeys, onboarding → kid/list → spelling → verse → progress → Learn4/short-word stages/skip-to-recall/skip-to-test → due Review → word bank → switch/join/privacy; manifest parsed, icons fetched, actual service worker activated; zero console/page errors or third-party requests. Cloud MP3 decoded/played; 503 and 4-second timeout fell back to instrumented device speech; device choice, blob reuse, initial two + one-ahead word/sentence prefetch, navigation cancellation and single-request spelling verified. Learn stages=${learnSteps}; on-screen key taps=${keyTaps}; key sound waits for a gesture; iOS switch overlay clicks once; Cloud requests=${cloudRequests}, mocked 503 requests=${fallbackRequests}. Speech not listened to by a human.`);
 } finally {await browser.close();}
