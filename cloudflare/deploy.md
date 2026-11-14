@@ -7,14 +7,17 @@ covered by the same `node --test` suite; it is not the public deployment.
 ## Product and privacy
 
 Anyone can create an empty family space with an optional display name and a
-4–8 digit Parent PIN. No email, password, login provider, analytics, ads, fonts,
-CDNs, or third-party browser requests. Speech defaults to Cloudflare Workers AI
+4–8 digit Parent PIN. Parent identity is optional: Google or an emailed code can
+link families for recovery; kids never need accounts. No passwords, analytics, ads,
+external fonts, CDNs or third-party browser requests during practice. Google sign-in
+is an explicit parent redirect; Resend delivery happens server-side when configured. Speech defaults to Cloudflare Workers AI
 (Aura-1 asteria), with a device `speechSynthesis` option and automatic fallback. Only
 text read aloud is sent for synthesis, not profile names or typed answers.
 Use first names or nicknames, not full names.
 
-The generated Family Code is the only way back in: save, copy, or print the card.
-Codes cannot be recovered by email. The browser saves the code in localStorage;
+Save, copy, or print the generated Family Code. With no linked parent account, it
+is the only way back in and cannot be recovered. Optional parent sign-in can recover
+previously linked families; it cannot discover or claim an unlinked family. The browser saves the code in localStorage;
 Switch family removes the local code and locks Parent mode. A `/f/<code>` link
 pre-fills joining and grants kid-level access to whoever has it. Do not publish
 these links. Request paths containing a shared code can appear in normal host
@@ -61,11 +64,11 @@ data only, preserving the destination family's PIN and identity.
 
 The `SHARES` binding is a singleton SQLite `ShareStore` named `shares`. It stores immutable one-off snapshots, single-admin classes with up to 200 immutable published weeks, aggregate counters and reports. It receives HMAC-derived ownership bindings, never family codes or kid identifiers. The follower family stores its own selected kids and import markers. Class follows poll the latest published week with a ten-minute family-side cache.
 
-A public `/s/<slug>` or `/c/<slug>` is an unlisted bearer link with no expiry until the owner stops it. No public catalogue, search, accounts or rosters are provided. Public snapshots include only title/date/note, words with sentences and an optional verse (reference/text/translation). Public pages and APIs are `noindex`; user data is rendered as text. Parents must not put private information into shared content. Imported copies belong to the receiving family and do not change when the source is edited or stopped.
+A public `/s/<slug>` or `/c/<slug>` is an unlisted bearer link with no expiry until the owner stops it. No public catalogue, search, child accounts or rosters are provided. Public snapshots include only title/date/note, words with sentences and an optional verse (reference/text/translation). Public pages and APIs are `noindex`; user data is rendered as text. Parents must not put private information into shared content. Imported copies belong to the receiving family and do not change when the source is edited or stopped.
 
 Parents create/stop links, manage classes, publish weeks and choose import recipients after PIN unlock. Existing per-family content limits apply transactionally to multi-kid imports; duplicate verses (same reference and text) are skipped. Single-admin classes are limited to five active feeds and one publication per ten minutes. Registry quotas are 20 share/class creations/day/family, 60 imports/hour/IP and 120 public reads/minute/IP (salted hashes only). Reports accept optional reasons of at most 300 characters. Ops statistics include aggregate share/class/import/report counts, never content or ownership identifiers.
 
-Additive migration `v3` creates `ShareStore`. A live `v2` deployment must send `{old_tag:"v2",new_tag:"v3",steps:[{new_sqlite_classes:["ShareStore"]}]}`; a first deployment sends the full v1+v2+v3 chain. Preserve existing migration history and secrets. The raw deployer handles both paths; dry-run and mocked-fetch tests require no Cloudflare API access.
+Additive migration `v3` creates `ShareStore`. A live `v2` deployment must add ShareStore and AccountStore with `old_tag:"v2",new_tag:"v4"`; the pending signin build adds v4 AccountStore; a first deployment sends the full v1–v4 chain. Preserve existing migration history and secrets. The raw deployer handles both paths; dry-run and mocked-fetch tests require no Cloudflare API access.
 
 Local sharing checks: `node cloudflare/sharing-smoke.mjs` runs the real ten-minute publication interval; `node cloudflare/sharing-ui-smoke.mjs <screenshot-directory>` checks desktop and phone sharing journeys. Use fresh disposable state to avoid inherited family-creation quotas.
 
@@ -181,6 +184,10 @@ build. Before a future authorized deployment, provide:
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
 | `IP_HASH_SALT` | Independent stable random secret, at least 32 characters |
 | `OPS_TOKEN` | Optional independent bearer secret for aggregate operator stats |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google OAuth web client; both required |
+| `RESEND_API_KEY` | Optional Resend API key for sign-in codes and opted-in mail |
+| `APP_ORIGIN` | Canonical HTTPS app origin used for email links; default `https://spelling.jesklabs.com`; self-hosters must override |
+| `EMAIL_FROM` | Sender var; default `Family Practice <spelling@jesklabs.com>`; use your verified domain |
 
 **`PARENT_PIN` is not used or required.** Each parent chooses their own PIN.
 Generate the two secrets locally (e.g. 32 random bytes encoded as hex), save them
@@ -190,7 +197,7 @@ The script does not read `.env` or persist credentials and never logs secrets.
 
 When deployment is authorized, run `node cloudflare/deploy.mjs` with those four
 variables already set securely. This immediately uploads/deploys the Worker and
-assets, then writes **SESSION_SECRET and IP_HASH_SALT**, plus **OPS_TOKEN only when supplied**, as Worker secrets. Omitting OPS_TOKEN logs a warning and preserves any existing deployed token; a fresh deployment without it has no ops endpoint.
+assets, then writes **SESSION_SECRET and IP_HASH_SALT**, plus **OPS_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and RESEND_API_KEY only when supplied**, as Worker secrets. `EMAIL_FROM` and `APP_ORIGIN` are plain-text vars (not secrets). Set APP_ORIGIN to your canonical HTTPS app origin. Omitted optional secrets preserve existing values, not disable a provider; remove a Worker secret explicitly to disable it. The uploader then PUTs the hourly schedule to `/workers/scripts/family-practice/schedules` with `[{"cron":"0 * * * *"}]`; this replaces that Worker’s cron list. Omitting OPS_TOKEN logs a warning and preserves any existing deployed token; a fresh deployment without it has no ops endpoint.
 It does not provision subscriptions, routes, DNS, custom hostnames, workers.dev,
 preview URLs, or Access policies. For this public product **Cloudflare Access is
 not required and must not gate the app**; independently enable/configure the
@@ -200,14 +207,14 @@ are deliberate defaults, not proof of any live public address.
 ## Uploader details
 
 - Worker `family-practice`, compatibility date `2026-11-01`.
-- ES modules `cloudflare/worker.js`, `cloudflare/core.js`, `cloudflare/auth.js`,
-  `cloudflare/tts.js`, `lib/practice.js`, preserving relative imports without bundling/rewriting.
+- ES modules `cloudflare/{worker,core,mcp,auth,tts,sharing,accounts,emails,notifications}.js`
+  and `lib/practice.js`, preserving relative imports without bundling/rewriting.
 - Bindings FAMILY → FamilyDatabase, REGISTRY → RegistryLimits, TTS_CACHE → TtsCache,
-  ASSETS → assets, AI → Workers AI (`type: "ai"`).
-- Preserve initial migration `v1`, `new_sqlite_classes: ["FamilyDatabase", "RegistryLimits"]`.
-  New migration `v2` adds `new_sqlite_classes: ["TtsCache"]`. Existing live v1 sends
-  `{old_tag:"v1",new_tag:"v2",steps:[{new_sqlite_classes:["TtsCache"]}]}`.
-  First deployment sends `old_tag:""`, `new_tag:"v2"`, with separate v1 and v2 steps.
+  SHARES → ShareStore, ACCOUNTS → AccountStore, ASSETS → assets, AI → Workers AI.
+- Preserve deployed migrations v1 FamilyDatabase/RegistryLimits, v2 TtsCache and
+  v3 ShareStore unchanged. Add v4 `new_sqlite_classes: ["AccountStore"]`.
+  First deployment sends all four steps; live v1/v2/v3 applies only subsequent
+  steps through v4; live v4 omits migrations. Unknown tags abort before writes.
 - Every regular file in `cloudflare/public/` is uploaded; symlinks are refused.
   `_headers` / `_redirects` are asset configuration, not downloadable assets.
   All asset requests run through the Worker so security headers and `/f/` work.
@@ -217,8 +224,8 @@ are deliberate defaults, not proof of any live public address.
   fallback for omitted migration tag/404); create assets-upload-session; upload
   returned buckets to `/workers/assets/upload?base64=true` using the **asset
   session JWT**, not the API token; PUT script multipart metadata/modules with
-  completion JWT; PUT two required secrets and optional OPS_TOKEN. Existing `v1` applies only v2; existing `v2` omits migration metadata;
-  unknown tags abort. `keep_bindings: ["secret_text"]` preserves other secrets.
+  completion JWT; PUT required and supplied optional secrets; PUT hourly schedules. Existing migrations
+  apply only missing steps through v4; unknown tags abort. `keep_bindings: ["secret_text"]` preserves other secrets.
 - Secret writes and script upload are not atomic. A failure can leave an earlier
   step live; rerun with the same stable secrets after correcting the cause.
   The app returns 503 until both secrets are configured. Non-secret bindings are
@@ -284,9 +291,8 @@ and daily numeric counters to the existing registry on mutations and their first
 read each UTC day. Stats query registry SQL only; no family fanout. Registry rows
 contain no names, codes, PINs, word/verse text, answers, or raw IPs; the response
 contains no identifiers. Family deletion removes its registry membership but
-retains recent numeric counts. Daily counters expire after 30 days. No external
-analytics service, tracking identifier, client analytics, or third-party browser
-request is introduced.
+retains recent numeric counts. Daily counters expire after 30 days. This statistics feature adds no external analytics service, tracking identifier,
+client analytics, or third-party browser request.
 
 Coverage starts when this reporting is enabled. Previously created families are
 registered lazily when next visited; their creation date is unknown and excluded
@@ -304,3 +310,51 @@ copies/backtracking and requires one correct step-100 attempt per intended word
 before session completion. Learn attempts remain visible in parent attempt history but are excluded from accuracy, tricky
 words and completed-test-list counts; they count toward practice streaks. Old backups default absent mode/
 step to test/0; invalid imported mode/step values are rejected.
+
+## Optional parent accounts and email (signin branch, not yet deployed)
+
+Code/PIN-only families remain fully usable with all provider secrets unset.
+Google: create an OAuth **Web application** client, configure its consent screen
+and exact redirect URI `https://<your-host>/auth/google/callback`, then provide
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Only verified parent email is used;
+no child accounts or Google contacts access. Hosted OAuth must use HTTPS. A Google
+client in testing mode may restrict sign-in to its configured test users.
+
+Resend: verify a sender domain (provider DNS requirements), create a send-capable
+API key, configure `RESEND_API_KEY`, and set `EMAIL_FROM` to that verified sender.
+The checked-in default belongs to the original hosted instance; self-hosters must
+replace it. Free-tier/provider quotas and deliverability are independent of the
+app's own bounded global mail budget. Do not purchase a plan automatically.
+Without Resend, emailed sign-in and delivery are disabled; Google may still work.
+Without Google, emailed sign-in may still work. Neither is required for kid practice.
+
+Identity persistence is in the singleton AccountStore; links hold recoverable
+family access and must be treated as private account data. Parent notifications
+are opt-in, distinct from requested sign-in codes. Account/family deletion and
+unlink must clean up associations. Digest content is aggregate kid progress
+only—never raw answers, codes/PINs, or full word/verse lists. Messages include
+List-Unsubscribe plus One-Click headers; the account route verifies a signed
+unsubscribe token and suppresses future optional emails. No tracking pixels.
+
+Hourly cron is UTC, but preference matching uses the parent's IANA timezone.
+`selectForHour(prefs, now, kind)` returns a boolean and **does not** reserve a send.
+The helper accepts `digest: {enabled,day,hour}` (Sunday=0) and
+`reminder: {enabled,days,hour}`, with `timezone` at the preference root; flat
+schedule objects and `weeklyDigest`/`practiceReminder` aliases also work.
+AccountStore adapts product preference flags, claims a local calendar date/kind
+before sending, and enforces quotas, bounded fanout and retention. The repeated
+fall-back DST hour must not resend; a nonexistent spring-forward hour is skipped.
+`buildWeeklyDigest` accepts `familyName`, at most ten `kids` summaries
+(`name, attempts, accuracy` in percent, `streak, dueWords`), `practiceUrl` and
+`unsubscribe`. `sendEmail` returns `{sent:true}` or `{sent:false,reason,...}`.
+There are no automatic retries, including timeouts/429/5xx; ambiguous network
+failures may already have delivered and must not be blindly resent.
+
+For offline/local-only email tests, set `EMAIL_TEST_SINK=1` only on disposable
+loopback Wrangler. The delivery helper additionally requires `APP_ORIGIN` to be
+loopback; callers derive it from the verified local request. It returns
+`{sent:true,test:true,message}` without provider access. AccountStore owns bounded
+sink persistence/test retrieval; never expose sink APIs on production. Never set
+this flag in deploy configuration. Mocked-fetch tests and uploader dry-run make
+zero external API calls. Real Google login, actual mail delivery and scheduled
+production processing remain unverified until separately authorized provider setup.

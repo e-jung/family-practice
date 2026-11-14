@@ -23,19 +23,19 @@ Help a family keep a small daily habit: weekly spelling tests read aloud (word â
 
 ## Positioning
 
-Built by a parent for his own kids and shared free (MIT). No accounts, no email, no ads, no analytics: a Family Code opens practice, a Parent PIN protects edits. Parents paste their own verse wording, so there is no translation licensing and no public content feed. Optional private-by-link snapshots and single-admin weekly class lists let families exchange practice without rosters or accounts.
+Built by a parent for his own kids and shared free (MIT). No ads or analytics: a Family Code opens practice, a Parent PIN protects edits. Optional Google or emailed-code parent sign-in links families for recovery and explicitly opted-in practice emails; kids never need an account. Parents paste their own verse wording, so there is no translation licensing and no public content feed. Optional private-by-link snapshots and single-admin weekly class lists let families exchange practice without rosters or child accounts.
 
 ## Operating Context
 
 - Spelling lists arrive weekly from school; a parent types or pastes them with optional sentences.
 - Practice happens at home, at a desk or on the couch, sometimes with a sibling waiting. Audio is central: the word is spoken, so the screen must stay calm while listening.
 - Devices vary from a 27" iMac with a physical keyboard to an iPhone held in small hands.
-- Family codes are printed and kept on the fridge or in a drawer; losing them loses access.
+- Family codes are printed and kept on the fridge or in a drawer; losing an unlinked code loses access; optional parent sign-in can recover previously linked families.
 
 ## Capabilities and Constraints
 
-- Vanilla JS, no build step, zero npm runtime dependencies; strict CSP (`script-src 'self'`, no third-party requests, no external fonts).
-- Collect only first names/nicknames and optional grade labels. Parent-managed family use only; class lists are single-admin publishing feeds, never school accounts or rosters.
+- Vanilla JS, no build step, zero npm runtime dependencies; strict CSP (`script-src 'self'`, no third-party requests in kid practice, no external fonts; optional parent Google sign-in uses an explicit redirect).
+- Collect only child first names/nicknames and optional grade labels; verified parent email is optional for account features. Parent-managed family use only; class lists are single-admin publishing feeds, never school accounts or rosters.
 - Speech: cloud voice with device-voice fallback; sounds must never play before a user gesture.
 - Practice data loads and saves online only; the PWA caches the public shell only.
 - Limits per family are bounded (10 kids, 200 lists, 300 verses, etc.).

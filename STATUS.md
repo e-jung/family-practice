@@ -21,6 +21,10 @@ Last updated: 2026-11-14
 | `SESSION_SECRET` | Worker secret | Signs parent cookies. **Keep stable**; rotating it logs out all parents. |
 | `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
 | `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Worker secrets (pending branch) | Both required for Google parent sign-in; allow exact `/auth/google/callback` redirect. |
+| `RESEND_API_KEY` | Optional Worker secret (pending branch) | Emailed codes and opt-in notifications; quota/verified domain required. |
+| `APP_ORIGIN` | Worker var (pending branch) | Canonical HTTPS email-link origin; self-hosters must override the hosted default. |
+| `EMAIL_FROM` | Worker var (pending branch) | Default `Family Practice <spelling@jesklabs.com>`; self-hosters must configure their verified sender. |
 | `TTS_SPEAKER` | Worker var (optional) | Aura-1 speaker; default `asteria`. |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | Deployer environment only | Token needs Workers Scripts edit (+ zone Workers Routes/DNS for the custom domain). Never a Worker binding. |
 | Custom domain | Workers Custom Domains | Attached once; `deploy.mjs` does not manage routes. `workers_dev = false`. |
@@ -37,6 +41,12 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 4. `node cloudflare/deploy.mjs --dry-run`, then deploy with credentials.
 5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
 6. Push `main`, add a changelog line below, and update "Live" if anything structural changed.
+
+## Pending branch: optional parent sign-in and email
+
+Prepared on `signin`, **not deployed**. Optional parent Google/emailed-code sign-in links family spaces without removing Family Code/PIN-only access. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders; child accounts remain prohibited. Unlinked lost codes cannot be recovered. Email helpers use one provider request with no automatic retries; AccountStore owns durable delivery claims and quotas. Provider identity/email are additional optional data processors, not analytics.
+
+Deployment preparation adds `ACCOUNTS` → `AccountStore`, additive migration `v4` (v1–v3 preserved), `accounts.js` and `emails.js` modules, and hourly cron (`0 * * * *`). Live section above still describes production, not this branch. Google OAuth and Resend deliveries require operator setup and remain unverified against real providers.
 
 ## Roadmap
 
@@ -60,6 +70,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
 
+- **2026-11-14 (pending): Optional parent identity, never kid accounts.** Google and emailed-code sign-in may link existing families and recover linked codes. Code/PIN-only access remains supported. Verified parent email is allowed only for account features and opt-in summaries/notifications; unlinked lost codes still have no recovery. This supersedes the earlier blanket no-email/no-login decision.
 - **2026-11-14: Share links, not a public library.** Owner-approved bearer links carry immutable spelling snapshots with sentences and an optional parent-selected verse; never identity or progress. Links never expire unless the owner stops them. Imported copies remain independent.
 - **2026-11-14: Single-admin class lists are publishing feeds.** One creating family can append immutable weeks; other families choose which kids receive copies. No school accounts, rosters, search, multi-admin editing, or remote changes to imported copies. This narrowly replaces the earlier blanket “no teacher/class mode” decision, without expanding into classroom management.
 
@@ -75,7 +86,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - **2026-11-14: Open-sourced under MIT with fresh history.** *Why:* trust for parents and contributions. Earlier history contained personal details, so it was not published.
 - **2026-11-14: Installable PWA**; the shell is cached and family data stays online-only. *Why:* families use phones and tablets, and no family data should sit in shared caches.
 - **2026-11-13: Voice is Workers AI Deepgram Aura-1 with a two-tier cache.** *Why:* browser speech is poor or missing on Linux Chromium. MeloTTS is deprecated on 2026-11-20. The shared cache keeps the per-character pricing within the free tier.
-- **2026-11-13: Public, no accounts. Family Code plus per-family Parent PIN, first names only.** *Why:* zero setup friction and no identity data to protect. Lost code means lost data, which is mitigated by printable codes and exports. An earlier Google-login gate was removed.
+- **2026-11-13: Public, Family Code plus per-family Parent PIN, child first names only.** Optional parent accounts are now approved on the pending signin branch (2026-11-14); code/PIN-only use remains supported. *Why:* zero setup friction and no identity data to protect. Lost code means lost data, which is mitigated by printable codes and exports. An earlier Google-login gate was removed.
 - **2026-11-13: Parents run it for their own kids, not school accounts.** Approved single-admin class-list feeds (2026-11-14) let families exchange practice material without rosters or school-managed student data.
 - **2026-11-13: Cloudflare Workers Free instead of a VPS or Vercel.** *Why:* the free tier with built-in SQLite DOs and AI, and a public kids' app shouldn't share a host with private services.
 - **2026-11-13: Parents paste verse text; no Bible API.** *Why:* translation licensing. Samples use public-domain KJV.

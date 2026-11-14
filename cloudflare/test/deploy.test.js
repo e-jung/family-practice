@@ -24,12 +24,18 @@ try {
   assert.equal(dryRun.metadata_if_first_deployment.observability.logs.invocation_logs, false, 'bearer URLs must not enter invocation logs');
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/mcp.js'));
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/sharing.js'));
-  assert.deepEqual(dryRun.metadata_if_live_v2.migrations, {old_tag:'v2',new_tag:'v3',steps:[{new_sqlite_classes:['ShareStore']}]});
-  assert.equal(dryRun.metadata_if_live_v3.migrations, undefined);
+  assert.deepEqual(dryRun.metadata_if_live_v2.migrations, {old_tag:'v2',new_tag:'v4',steps:[{new_sqlite_classes:['ShareStore']},{new_sqlite_classes:['AccountStore']}]});
+  assert.deepEqual(dryRun.metadata_if_live_v3.migrations, {old_tag:'v3',new_tag:'v4',steps:[{new_sqlite_classes:['AccountStore']}]});
+  assert.equal(dryRun.metadata_if_live_v4.migrations, undefined);
+  assert.deepEqual(dryRun.schedules, [{cron:'0 * * * *'}]);
+  assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/accounts.js'));
+  assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/emails.js'));
+  assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/notifications.js'));
+  assert.deepEqual(dryRun.optional_secrets, ['OPS_TOKEN','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','RESEND_API_KEY']);
   assert.ok(dryRun.metadata_if_first_deployment.bindings.some(b=>b.type==='ai' && b.name==='AI'));
   const env = { CF_API_TOKEN: 'private-api-token', CF_ACCOUNT_ID: 'a'.repeat(32), IP_HASH_SALT: 'i'.repeat(64), SESSION_SECRET: 's'.repeat(64) };
   const response = (result, status=200) => new Response(JSON.stringify({ success: true, result }), { status });
-  for (const mode of ['first', 'upgrade', 'live-v2', 'repeat', 'fallback', 'allcached']) {
+  for (const mode of ['first', 'upgrade', 'live-v2', 'live-v3', 'repeat', 'fallback', 'allcached']) {
     const calls = [];
     let uploads = 0;
     const result = await deploy({ root, env, log() {}, fetchImpl: async (url, options) => {
@@ -37,9 +43,9 @@ try {
       calls.push([path, options]);
       if (path.endsWith('/settings')) {
         if (mode === 'first') return response(null, 404);
-        return response(mode === 'fallback' ? {} : { migration_tag: mode === 'upgrade' ? 'v1' : mode === 'live-v2' ? 'v2' : 'v3' });
+        return response(mode === 'fallback' ? {} : { migration_tag: mode === 'upgrade' ? 'v1' : mode === 'live-v2' ? 'v2' : mode === 'live-v3' ? 'v3' : 'v4' });
       }
-      if (path.endsWith('/scripts')) return response(mode === 'first' ? [] : [{ id: 'family-practice', migration_tag: 'v3' }]);
+      if (path.endsWith('/scripts')) return response(mode === 'first' ? [] : [{ id: 'family-practice', migration_tag: 'v4' }]);
       if (path.endsWith('/assets-upload-session')) {
         assert.deepEqual(JSON.parse(options.body).manifest, { ...plan.manifest });
         const hashes = Object.values(plan.manifest).map(x => x.hash);
@@ -61,6 +67,11 @@ try {
         assert.equal(secret.type, 'secret_text');
         return response({ name: secret.name, type: secret.type });
       }
+      if (path.endsWith('/schedules')) {
+        assert.equal(options.method, 'PUT');
+        assert.deepEqual(JSON.parse(options.body), [{cron:'0 * * * *'}]);
+        return response([{cron:'0 * * * *'}]);
+      }
       assert.ok(path.endsWith('/scripts/family-practice'));
       assert.equal(options.method, 'PUT');
       const metadata = JSON.parse(await options.body.get('metadata').text());
@@ -69,20 +80,25 @@ try {
       assert.equal(metadata.assets.jwt, mode === 'allcached' ? 'session-jwt' : 'completion-jwt');
       assert.equal(metadata.main_module, 'cloudflare/worker.js');
       assert.equal(metadata.assets.config.run_worker_first, true);
-      assert.equal(Boolean(metadata.migrations), ['first','upgrade','live-v2'].includes(mode));
-      if (mode === 'first') assert.deepEqual(metadata.migrations, { old_tag: '', new_tag: 'v3', steps: [{ new_sqlite_classes: ['FamilyDatabase', 'RegistryLimits'] }, { new_sqlite_classes: ['TtsCache'] }, { new_sqlite_classes: ['ShareStore'] }] });
-      if (mode === 'upgrade') assert.deepEqual(metadata.migrations,{old_tag:'v1',new_tag:'v3',steps:[{new_sqlite_classes:['TtsCache']},{new_sqlite_classes:['ShareStore']}]});
-      if (mode === 'live-v2') assert.deepEqual(metadata.migrations, {old_tag:'v2',new_tag:'v3',steps:[{new_sqlite_classes:['ShareStore']}]});
+      assert.equal(Boolean(metadata.migrations), ['first','upgrade','live-v2','live-v3'].includes(mode));
+      if (mode === 'first') assert.deepEqual(metadata.migrations, { old_tag: '', new_tag: 'v4', steps: [{ new_sqlite_classes: ['FamilyDatabase', 'RegistryLimits'] }, { new_sqlite_classes: ['TtsCache'] }, { new_sqlite_classes: ['ShareStore'] }, { new_sqlite_classes: ['AccountStore'] }] });
+      if (mode === 'upgrade') assert.deepEqual(metadata.migrations,{old_tag:'v1',new_tag:'v4',steps:[{new_sqlite_classes:['TtsCache']},{new_sqlite_classes:['ShareStore']},{new_sqlite_classes:['AccountStore']}]});
+      if (mode === 'live-v2') assert.deepEqual(metadata.migrations, {old_tag:'v2',new_tag:'v4',steps:[{new_sqlite_classes:['ShareStore']},{new_sqlite_classes:['AccountStore']}]});
+      if (mode === 'live-v3') assert.deepEqual(metadata.migrations, {old_tag:'v3',new_tag:'v4',steps:[{new_sqlite_classes:['AccountStore']}]});
+      assert.ok(metadata.bindings.some(b=>b.name==='ACCOUNTS' && b.class_name==='AccountStore'));
+      assert.ok(metadata.bindings.some(b=>b.name==='EMAIL_FROM' && b.text.includes('@')));
       assert.ok(metadata.bindings.some(b=>b.name==='SHARES' && b.class_name==='ShareStore'));
       assert.ok(metadata.bindings.some(b=>b.name==='TTS_CACHE' && b.class_name==='TtsCache'));
       for (const name of MODULES) assert.equal(await options.body.get(name).text(), '// mock source');
       return response({ id: 'family-practice' });
     } });
-    assert.equal(result.migrated, ['first','upgrade','live-v2'].includes(mode));
+    assert.equal(result.migrated, ['first','upgrade','live-v2','live-v3'].includes(mode));
     assert.equal(calls.filter(([p]) => p.endsWith('/secrets')).length, 2);
+    assert.equal(calls.filter(([p]) => p.endsWith('/schedules')).length, 1);
+    assert.ok(calls.at(-1)[0].endsWith('/schedules'));
   }
   let calls = 0;
-  await assert.rejects(deploy({ root, env, log() {}, fetchImpl: async () => { calls++; return response({ migration_tag: 'v4' }); } }), /Unexpected Durable Object/);
+  await assert.rejects(deploy({ root, env, log() {}, fetchImpl: async () => { calls++; return response({ migration_tag: 'v5' }); } }), /Unexpected Durable Object/);
   assert.equal(calls, 1);
   await assert.rejects(deploy({ root, env, log() {}, fetchImpl: async () => response({}, 403) }), /HTTP 403/);
   await symlink('/etc/passwd', join(root, 'cloudflare/public/secret-link'));
@@ -95,7 +111,7 @@ try {
 });
 
 
-test('Wrangler retains deployed v1/v2 history and adds only ShareStore in v3', async () => {
+test('Wrangler retains deployed v1/v2 history and adds ShareStore v3 and AccountStore v4', async () => {
   const config = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
   const migrations = [...config.matchAll(/\[\[migrations\]\]\s*tag = "([^"]+)"\s*new_sqlite_classes = (\[[^\]]+\])/g)]
     .map(([, tag, classes]) => ({tag, classes: JSON.parse(classes)}));
@@ -103,6 +119,8 @@ test('Wrangler retains deployed v1/v2 history and adds only ShareStore in v3', a
     {tag:'v1',classes:['FamilyDatabase','RegistryLimits']},
     {tag:'v2',classes:['TtsCache']},
     {tag:'v3',classes:['ShareStore']},
+    {tag:'v4',classes:['AccountStore']},
   ]);
+  assert.match(config, /crons = \["0 \* \* \* \*"\]/);
   assert.match(config, /\[\[durable_objects.bindings\]\]\s*name = "SHARES"\s*class_name = "ShareStore"/);
 });

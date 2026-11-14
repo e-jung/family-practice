@@ -49,3 +49,18 @@ head_sampling_rate = 1
 [observability.logs]
 enabled = true
 invocation_logs = false
+
+[[durable_objects.bindings]]
+name = "ACCOUNTS"
+class_name = "AccountStore"
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["AccountStore"]
+
+[vars]
+APP_ORIGIN = "https://spelling.jesklabs.com"
+EMAIL_FROM = "Family Practice <spelling@jesklabs.com>"
+
+[triggers]
+crons = ["0 * * * *"]
