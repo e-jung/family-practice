@@ -60,3 +60,15 @@ Parent mode exports JSON/CSV and restores JSON transactionally. Import replaces 
 Bug reports and pull requests are welcome. Read [AGENTS.md](AGENTS.md), use fictional fixtures, preserve both builds, and run `node --test`. Development and optional Chromium smoke checks are documented in [cloudflare/deploy.md](cloudflare/deploy.md). Report vulnerabilities through [GitHub private vulnerability reporting](SECURITY.md).
 
 [MIT](LICENSE) · Copyright (c) 2026 Eric Jung.
+
+## Connect an AI assistant
+
+In the hosted Worker build, open **Parent mode**, unlock with your PIN, then choose **Connect an AI assistant**. Create a named connection with **Add & read** (default) or **Read only** access. Save its connection URL immediately: it is shown only once. Up to five connections can be active.
+
+- **Claude:** Settings → Connectors → Add custom connector → paste the URL.
+- **Claude Code:** `claude mcp add --transport http family-practice <url>`
+- **Other clients:** use any MCP client supporting Streamable HTTP. The URL is `https://<your-origin>/mcp/t/<token>`. Header-capable clients can instead use `https://<your-origin>/mcp` with `Authorization: Bearer <token>`.
+
+Anyone with this link can add and read your family's lists. Revoke it if shared by mistake. Read-only connections cannot change content. Parent PIN changes do **not** revoke connections; use **Revoke** or **Revoke all**. Deleting the family removes all connections.
+
+The seven tools list kids/lists, read a list, add/update a spelling list, add a parent-provided verse and read aggregate progress. Ask the assistant for kid-friendly example sentences; missing sentences stay blank. Supply your family's own verse translation text rather than asking it to invent scripture (public-domain KJV/WEB is fine). No delete tools exist. The server stores only token hashes, uses no accounts or OAuth, and supports stateless MCP `2025-11-25` (with `2025-06-18` and `2025-03-26` negotiation). Limits are 60 requests/minute/connection, 20 writes/hour/family, and 256 KiB/request.

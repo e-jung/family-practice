@@ -262,7 +262,7 @@ function header() {
     familyCode && !kid ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
     kid && !parentPage ? button([icon("back"), "Switch kid"], () => { kid = null; render(); }, "quiet small") : null,
     button([icon("lock"), "Parent mode"], () => state.parent ? parentHome() : unlock(), "secondary small"),
-    state.parent ? button("Lock Parent mode", async () => { await api("/api/parent/lock", {}); parentPage = false; await reload(); render(); }, "quiet small") : null,
+    state.parent ? button("Lock", async () => { await api("/api/parent/lock", {}); parentPage = false; await reload(); render(); }, "quiet small") : null,
   ].filter(Boolean));
 }
 const TONES = { Spelling: "spelling", "Bible Verses": "verses", Progress: "progress", Parent: "parent" };
@@ -1311,7 +1311,7 @@ async function assistantControls() {
       name.value = ""; await refresh();
     } catch (err) { error.textContent = err.message; }
     finally { create.disabled = false; }
-  } }, field("Connection name", name), field("Scope", scope), create, error), shown,
+  } }, field("Name", name), field("Scope", scope), create, error), shown,
   el("h3", {}, "Your connections"), connections,
   button("Revoke all", async () => { if (!confirm("Revoke every assistant connection? All existing links will stop working.")) return; await api("/api/admin/connections/revoke-all", {}); shown.replaceChildren(); await refresh(); }, "secondary"),
   el("h3", {}, "Set up your assistant"),

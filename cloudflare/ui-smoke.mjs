@@ -321,7 +321,7 @@ try {
     await page.getByRole('button',{name:'I have a family code'}).click();
     await page.getByLabel('Family code',{exact:true}).fill(code);await page.getByRole('button',{name:'Join family',exact:true}).click();
     await page.getByRole('button',{name:/Alex/}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Lock Parent mode',exact:true}).count(),0,'switch locked parent cookie');
+    assert.equal(await page.getByRole('button',{name:'Lock',exact:true}).count(),0,'switch locked parent cookie');
     await page.goto(origin+'/f/'+code);assert.equal(await page.getByLabel('Family code',{exact:true}).inputValue(),code);
     await page.goto(origin+'/privacy');await page.getByRole('heading',{name:'Privacy & your family’s data'}).waitFor();
     // Delete disposable space with re-unlock, without expecting browser 401 errors.
