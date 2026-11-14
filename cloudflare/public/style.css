@@ -81,7 +81,7 @@ footer a { color: var(--ink); }
 .band-meta { font: 600 1.1rem/1.2 var(--display); letter-spacing: .04em; text-transform: uppercase; color: #ffffffd9; }
 
 /* Section tabs sit on the band's lower edge, like the tab of a file. */
-.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; margin: 0; }
 .tabs button { flex: 1 1 0; min-width: max-content; border: 0; border-radius: 8px 8px 0 0; background: transparent; color: #ffffffd9; font: 600 1.2rem/1 var(--display); letter-spacing: .02em; padding: 14px 18px; min-height: 52px; box-shadow: none; }
 .tabs button:hover { background: #ffffff1f; filter: none; }
 .tabs button.active { background: var(--ground); color: var(--tone); }
@@ -107,7 +107,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .band button:focus-visible, .practice-band button:focus-visible { outline-color: #fff; }
 
 /* Fields */
-input, textarea, select { display: block; width: 100%; min-width: 0; max-width: 100%; font: inherit; color: var(--ink); background: var(--stock); border: 1.5px solid var(--rule-strong); border-radius: 8px; padding: 11px 13px; caret-color: var(--tone); scroll-margin-block: 100px; }
+input, textarea, select { box-sizing: border-box; display: block; width: 100%; min-width: 0; max-width: 100%; font: inherit; color: var(--ink); background: var(--stock); border: 1.5px solid var(--rule-strong); border-radius: 8px; padding: 11px 13px; caret-color: var(--tone); scroll-margin-block: 100px; }
 input::placeholder, textarea::placeholder { color: #6b7480; }
 textarea { min-height: 130px; resize: vertical; }
 input[type="checkbox"] { width: 22px; height: 22px; display: inline-block; flex: none; accent-color: var(--tone); }
@@ -380,3 +380,21 @@ details:not(:has(.danger)) > summary { color: inherit; }
   .learn-stages .stage-tab { padding: 7px 1px; gap: 3px; }
   .desk:has(.learn-stages) { gap: 8px; padding-top: 16px; }
 }
+
+/* Parent tools never compete with the child's three file tabs. */
+.parent-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 24px; }
+.parent-nav button { flex: 1 1 145px; }
+.parent-nav button.active { background: var(--slate); color: white; }
+input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; width: 100%; min-height: 48px; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; min-width: 0; }
+dialog { padding: 0; max-height: min(90dvh, 900px); overflow: auto; }
+dialog[open] { display: flex; flex-direction: column; }
+dialog > .row { flex: none; padding: 18px 22px; border-bottom: 1px solid var(--rule); }
+dialog > :not(.row):not(form) { padding: 20px; }
+.sheet-form { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.sheet-body { padding: 18px 22px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.sheet-body textarea { max-height: 35dvh; overflow-y: auto; min-height: 110px; }
+.sheet-form > .form-actions { position: sticky; bottom: 0; flex: none; margin: 0; padding: 14px 22px max(14px, env(safe-area-inset-bottom)); background: var(--stock); border-top: 1px solid var(--rule); display: flex; gap: 12px; }
+.sheet-form > .form-actions > button { flex: 1 1 0; min-width: 0; }
+.connection-url { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+@media (max-width: 600px) { dialog { padding: 0; } .tabs button { min-width: 0; padding-inline: 10px; white-space: nowrap; } }

@@ -29,6 +29,7 @@ let state = {
   },
   kid = null,
   tab = "Spelling";
+let parentPage = false, parentSection = "Kids";
 let viewVersion = 0;
 let cooldown = 0,
   audio = null,
@@ -259,10 +260,9 @@ function header() {
   const actions = $("header-actions");
   actions.replaceChildren(...[
     familyCode && !kid ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
-    kid ? button([icon("back"), "Switch kid"], () => { kid = null; render(); }, "quiet small") : null,
-    state.parent
-      ? button([icon("unlock"), "Lock Parent mode"], async () => { await api("/api/parent/lock", {}); await reload(); render(); }, "secondary small")
-      : button([icon("lock"), "Parent mode"], unlock, "secondary small"),
+    kid && !parentPage ? button([icon("back"), "Switch kid"], () => { kid = null; render(); }, "quiet small") : null,
+    button([icon("lock"), "Parent mode"], () => state.parent ? parentHome() : unlock(), "secondary small"),
+    state.parent ? button("Lock Parent mode", async () => { await api("/api/parent/lock", {}); parentPage = false; await reload(); render(); }, "quiet small") : null,
   ].filter(Boolean));
 }
 const TONES = { Spelling: "spelling", "Bible Verses": "verses", Progress: "progress", Parent: "parent" };
@@ -281,7 +281,7 @@ function shell(mode = "", tone = "") {
       el("h1", {}, kid.name),
       el("span", { class: "band-meta" }, kid.grade ? "Grade " + kid.grade : "")),
     el("nav", { class: "tabs", "aria-label": "Practice sections" },
-      ["Spelling", "Bible Verses", "Progress", ...(state.parent ? ["Parent"] : [])].map((t) =>
+      ["Spelling", "Bible Verses", "Progress"].map((t) =>
         button(t, () => { tab = t; render(); }, t === tab ? "active" : "")),
     ),
   ));
@@ -325,6 +325,7 @@ async function selectKid(k) {
   render();
 }
 function render() {
+  if (parentPage && state.parent) return parentHome();
   if (!shell()) {
     app.dataset.tone = "parent";
     app.append(el("div", { class: "band" },
@@ -353,7 +354,7 @@ function render() {
   if (tab === "Spelling") spellingHome();
   else if (tab === "Bible Verses") verseHome();
   else if (tab === "Progress") progressHome();
-  else parentHome(true);
+
 }
 function listActions(l, small = false) {
   const size = small ? " small" : "";
@@ -983,6 +984,19 @@ function modal(title, content) {
     el("div", { class: "row spread" }, el("h2", {}, title), button(icon("close", { label: "Close" }), () => d.close(), "quiet")),
     content,
   );
+  if (content?.tagName === "FORM") {
+    content.classList.add("sheet-form");
+    let actions = content.querySelector(":scope > .form-actions");
+    if (!actions) {
+      const submit = content.querySelector(":scope > button[type=submit]");
+      if (submit) { actions = el("div", { class: "row form-actions" }, submit); content.append(actions); }
+    }
+    if (!content.querySelector(":scope > .sheet-body")) {
+      const body = el("div", { class: "sheet-body" });
+      [...content.children].filter(n => n !== actions).forEach(n => body.append(n));
+      content.prepend(body);
+    }
+  }
   document.body.append(d);
   d.addEventListener("close", () => d.remove());
   d.showModal();
@@ -1007,7 +1021,7 @@ function unlock() {
           await api("/api/parent/unlock", { pin: pin.value });
           d.close();
           await reload();
-          render();
+          parentHome();
           toast("Parent mode is unlocked.");
         } catch (err) {
           error.textContent = err.message;
@@ -1045,8 +1059,7 @@ function formDialog(title, fields, onSave) {
         }
       },
     },
-    fields,
-    error,
+    el("div", { class: "sheet-body" }, fields, error),
     el(
       "div",
       { class: "row form-actions" },
@@ -1073,7 +1086,7 @@ function editList(l) {
         .join("\n") || "",
       {
         required: true,
-        rows: 10,
+        rows: 8,
         placeholder:
           "journey | We began our journey at sunrise.\nbeautiful | The garden is beautiful.",
       },
@@ -1081,6 +1094,7 @@ function editList(l) {
   formDialog(
     l ? "Edit spelling list" : "Add spelling list",
     [
+      el("p", { class: "muted field-hint" }, "Each list is one week’s test. Add a new list for new words."),
       field("Week title", title),
       field("Date", day),
       field("One word per line · word | optional sentence", ws),
@@ -1171,19 +1185,25 @@ function editKid(k) {
       }),
   );
 }
-function parentHome(inShell = false) {
+const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Connect an AI assistant"];
+function parentHome() {
   if (!state.parent) return unlock();
-  if (!inShell) {
-    viewVersion++;
-    stopSpeaking();
-    app.replaceChildren();
-    document.body.classList.remove("practicing");
-    app.dataset.tone = "parent";
-    header();
-    app.append(el("div", { class: "band" }, el("div", { class: "band-head" }, el("h1", {}, "Family settings"), button("Back", render, "secondary small"))));
-  }
+  parentPage = true;
+  viewVersion++;
+  stopSpeaking();
+  app.replaceChildren();
+  document.body.classList.remove("practicing");
+  app.dataset.tone = "parent";
+  header();
+  app.append(el("div", { class: "band" }, el("div", { class: "band-head" },
+    el("h1", {}, "Parent"), button("Done", () => { parentPage = false; render(); }, "secondary small"))));
+  app.append(el("nav", { class: "parent-nav", "aria-label": "Parent sections" }, PARENT_SECTIONS.map(name =>
+    button(name, () => { parentSection = name; parentHome(); window.scrollTo(0, 0); }, name === parentSection ? "active" : "secondary"))));
+  app.querySelector(".parent-nav .active")?.setAttribute("aria-current", "page");
+  if (parentSection === "Connect an AI assistant") { assistantControls(); return; }
+  if (parentSection === "Spelling lists" || parentSection === "Bible verses") { parentPractice(); return; }
   const section = (title, ...children) => el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, title)), ...children);
-  app.append(section("Family profiles",
+  if (parentSection === "Kids") { app.append(section("Kids",
     el("div", {}, state.kids.map((k) => el("div", { class: "profile-controls" },
       el("strong", {}, k.name),
       button("Rename / edit", () => editKid(k), "secondary small"),
@@ -1197,8 +1217,10 @@ function parentHome(inShell = false) {
     ))),
     el("div", { class: "form-actions" }, button("+ Add kid", () => editKid())),
   ));
+  return; }
+  if (parentSection === "Family") app.append(familyControls());
+  if (parentSection === "This device") {
   app.append(deviceControls());
-  app.append(familyControls());
   const voice = el("select", { id: "voice" },
     el("option", {value: "cloud", selected: cloudVoice()}, "Cloud voice (recommended)"),
     el("option", {value: "device", selected: !cloudVoice()}, "This device’s voice")),
@@ -1230,6 +1252,7 @@ function parentHome(inShell = false) {
     ),
   );
   app.append(section("Listen your way", form));
+  return; }
   const upload = input("backup-file", "", { type: "file", accept: ".json,application/json" });
   app.append(section("Backups",
     el("p", {}, "Export includes all profiles, lists, verses, settings, sessions, and attempts. JSON can restore this app; CSV is a spreadsheet-friendly table with a table-name column and shared fields."),
@@ -1254,6 +1277,67 @@ function parentHome(inShell = false) {
     }, "danger"),
   ));
 }
+
+async function assistantControls() {
+  const version = viewVersion;
+  const host = el("section", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "Connect an AI assistant")),
+    el("p", {}, "Let an assistant prepare weekly lists and read practice summaries. No account needed."),
+    el("p", { class: "notice" }, "Anyone with this link can add and read your family's lists. Revoke it if shared by mistake."),
+    el("p", { class: "muted" }, "Read only connections cannot make changes. Changing your Parent PIN does not revoke connections. You can keep up to five connections."));
+  app.append(host);
+  const name = input("connection-name", "", { required: true, maxlength: 80, placeholder: "Claude on Dad’s laptop" });
+  const scope = el("select", { id: "connection-scope" }, el("option", { value: "add-read" }, "Add & read"), el("option", { value: "read-only" }, "Read only"));
+  const shown = el("div", { "aria-live": "polite" });
+  const connections = el("div", { class: "rows" });
+  const error = el("p", { role: "alert" });
+  const refresh = async () => {
+    const result = await api("/api/admin/connections");
+    if (viewVersion !== version) return;
+    connections.replaceChildren(...result.connections.map(c => el("div", { class: "section" },
+      el("strong", {}, c.name), el("p", { class: "meta" }, `${c.scope === "read-only" ? "Read only" : "Add & read"} · Created ${niceDate(c.created_at)} · Last used: ${c.last_used_at ? new Date(c.last_used_at).toLocaleString() : "Not yet"}`),
+      button("Revoke", async () => { if (!confirm(`Revoke ${c.name}? Its link will stop working.`)) return; await api("/api/admin/connections/revoke", { id: c.id }); shown.replaceChildren(); await refresh(); }, "secondary small"))));
+    if (!result.connections.length) connections.append(el("p", { class: "muted" }, "No connections yet."));
+  };
+  const create = el("button", { type: "submit" }, "Create connection");
+  host.append(el("form", { onsubmit: async e => {
+    e.preventDefault(); create.disabled = true; error.textContent = "";
+    try {
+      const result = await api("/api/admin/connections", { name: name.value, scope: scope.value });
+      if (viewVersion !== version) return;
+      const url = location.origin + "/mcp/t/" + result.token;
+      shown.replaceChildren(el("h3", {}, "Save this connection link now"), el("p", {}, "Shown only once. It cannot be retrieved after you leave this page."),
+        el("p", { class: "connection-url" }, url), button("Copy connection URL", async () => { await navigator.clipboard.writeText(url); toast("Connection URL copied. Keep it private."); }, "secondary"),
+        el("p", {}, "Claude Code command"), el("pre", { class: "connection-url" }, `claude mcp add --transport http family-practice ${url}`));
+      name.value = ""; await refresh();
+    } catch (err) { error.textContent = err.message; }
+    finally { create.disabled = false; }
+  } }, field("Connection name", name), field("Scope", scope), create, error), shown,
+  el("h3", {}, "Your connections"), connections,
+  button("Revoke all", async () => { if (!confirm("Revoke every assistant connection? All existing links will stop working.")) return; await api("/api/admin/connections/revoke-all", {}); shown.replaceChildren(); await refresh(); }, "secondary"),
+  el("h3", {}, "Set up your assistant"),
+  el("p", {}, "Claude: Settings → Connectors → Add custom connector → paste the connection URL."),
+  el("p", {}, "Claude Code: run the command shown with your new connection link."),
+  el("p", {}, "Any MCP client that supports Streamable HTTP: use the connection URL. For clients that support headers, use /mcp on this origin with Authorization: Bearer followed by your connection token."));
+  try { await refresh(); } catch (err) { if (viewVersion === version) error.textContent = err.message; }
+}
+
+function parentPractice() {
+  const isList = parentSection === "Spelling lists";
+  const picker = el("select", { id: "parent-kid" }, state.kids.map(k => el("option", { value: k.id, selected: kid?.id === k.id }, k.name)));
+  picker.addEventListener("change", async () => { kid = state.kids.find(k => k.id === picker.value); await reload(); parentHome(); });
+  app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, parentSection)),
+    state.kids.length ? field("Kid", picker) : el("p", {}, "Add a kid in Kids first.")));
+  if (!state.kids.length) return;
+  if (!kid) { kid = state.kids[0]; reload().then(() => { if (parentPage) parentHome(); }).catch(e => toast(e.message)); return; }
+  const items = isList ? state.lists : state.verses;
+  app.append(el("p", { class: "muted" }, isList ? "Each list is one week’s test. Add a new list for new words. Editing keeps practice history." : "Paste the wording your family uses."),
+    button(isList ? "+ Add spelling list" : "+ Add Bible verse", () => isList ? editList() : editVerse()),
+    el("div", { class: "rows section" }, items.map(item => el("div", { class: "row spread" },
+      el("div", {}, el("strong", {}, isList ? item.title : item.reference), el("p", { class: "meta" }, (item.archived ? "Archived · " : "") + (isList ? `${item.words.length} words · ${niceDate(item.date)}` : item.text))),
+      el("div", { class: "row" }, button("Edit", () => isList ? editList(item) : editVerse(item), "secondary small"),
+        button(item.archived ? "Restore" : "Archive", () => archive(isList ? "lists" : "verses", item), "quiet small"))))));
+}
+
 // Per-device feedback settings live in this browser only, never on the server.
 function deviceControls() {
   const s = deviceSettings();
@@ -1370,6 +1454,7 @@ function codeCard() {
   ));
 }
 async function openFamily(code) {
+  parentPage = false;
   const previous = familyCode;
   familyCode = code.trim();
   kid = null;

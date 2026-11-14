@@ -269,7 +269,8 @@ try {
     if(width===390)assert.ok((await page.evaluate(()=>window.testSpoken)).length>0);
     else {
       // Saved device choice must bypass cloud; switching back clears the failure cooldown.
-      await page.getByRole('button',{name:'Parent',exact:true}).click();
+      await page.getByRole('button',{name:'Parent mode',exact:true}).click();
+      await page.getByRole('button',{name:'This device',exact:true}).click();
       assert.equal(await page.getByLabel('Reading voice').inputValue(),'cloud');
       await page.getByLabel('Reading voice').selectOption('device');
       await page.getByRole('button',{name:'Save voice settings'}).click();
@@ -295,7 +296,7 @@ try {
       const requestStarted = new Promise(resolve => { cancelRequestStarted = resolve; });
       const triggerVoice = page.getByRole('button',{name:'Test voice',exact:true}).evaluate(button=>button.click());
       await requestStarted;
-      await page.getByRole('button',{name:'Progress',exact:true}).evaluate(button=>button.click());
+      await page.getByRole('button',{name:'Done',exact:true}).evaluate(button=>button.click());
       await triggerVoice;
       await page.waitForTimeout(1400);
       assert.deepEqual(await page.evaluate(()=>({spoken:window.testSpoken.length,audio:window.testAudioStarted})),before,'navigation cancels stale speech without fallback');

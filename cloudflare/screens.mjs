@@ -145,7 +145,7 @@ try {
     await page.getByRole('button',{name:'Parent mode',exact:true}).click();
     await page.getByLabel('Parent PIN',{exact:true}).fill(PIN);
     await page.getByRole('button',{name:'Unlock',exact:true}).click();
-    await page.getByRole('button',{name:'Parent',exact:true}).click();
+    await page.getByRole('button',{name:'This device',exact:true}).click();
     await page.getByLabel('Reading voice').waitFor();
     await shot(page,'10-parent-settings',label,true);
     await context.close();
