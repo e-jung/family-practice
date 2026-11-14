@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
 export const SCRIPT = 'family-practice';
-export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'lib/practice.js'];
+export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'lib/practice.js'];
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.mjs': 'application/javascript; charset=utf-8',
