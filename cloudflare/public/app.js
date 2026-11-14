@@ -1,4 +1,7 @@
 import {newLearnWord, advanceLearn} from "/learn.js";
+import {icon} from "/icons.js";
+import {createKeyboard} from "/keyboard.js";
+import {deviceSettings, setDeviceSettings, supportsHaptics, onScreenKeyboard, previewSound} from "/feedback.js";
 const $ = (id) => document.getElementById(id);
 const app = $("app");
 const FAMILY_STORAGE = "family-practice-code";
@@ -254,70 +257,65 @@ async function reload() {
 }
 function header() {
   const actions = $("header-actions");
-  actions.replaceChildren(
-    familyCode ? button("Family code", codeCard, "quiet small") : null,
-    familyCode ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
-    el(
-      "div",
-      { class: "row" },
-      kid
-        ? button(
-            "← Switch kid",
-            () => {
-              kid = null;
-              render();
-            },
-            "quiet small",
-          )
-        : null,
-      state.parent
-        ? button(
-            "Lock Parent mode",
-            async () => {
-              await api("/api/parent/lock", {});
-              await reload();
-              render();
-            },
-            "secondary small",
-          )
-        : button("Parent mode", unlock, "secondary small"),
-    ),
-  );
+  actions.replaceChildren(...[
+    familyCode && !kid ? button("Family code", codeCard, "quiet small") : null,
+    familyCode && !kid ? button("Switch family", async () => { await api("/api/parent/lock", {}).catch(() => {}); rememberFamily(""); kid = null; state.parent = false; history.replaceState({}, "", "/"); landing(); }, "quiet small") : null,
+    kid ? button([icon("back"), "Switch kid"], () => { kid = null; render(); }, "quiet small") : null,
+    state.parent
+      ? button([icon("unlock"), "Lock Parent mode"], async () => { await api("/api/parent/lock", {}); await reload(); render(); }, "secondary small")
+      : button([icon("lock"), "Parent mode"], unlock, "secondary small"),
+  ].filter(Boolean));
 }
-function shell() {
+const TONES = { Spelling: "spelling", "Bible Verses": "verses", Progress: "progress", Parent: "parent" };
+// mode "practice" hides the app chrome so the child sees one task.
+function shell(mode = "", tone = "") {
   viewVersion++;
   stopSpeaking();
   app.replaceChildren();
+  document.body.classList.toggle("practicing", mode === "practice");
+  app.dataset.tone = tone || TONES[tab] || "spelling";
   header();
   if (!kid) return false;
-  app.append(
-    el(
-      "div",
-      { class: "row spread" },
-      el("h1", {}, kid.name + "’s practice"),
-      el("span", { class: "badge" }, "Grade " + (kid.grade || "—")),
+  if (mode === "practice") return true;
+  app.append(el("div", { class: "band" },
+    el("div", { class: "band-head" },
+      el("h1", {}, kid.name),
+      el("span", { class: "band-meta" }, kid.grade ? "Grade " + kid.grade : "")),
+    el("nav", { class: "tabs", "aria-label": "Practice sections" },
+      ["Spelling", "Bible Verses", "Progress", ...(state.parent ? ["Parent"] : [])].map((t) =>
+        button(t, () => { tab = t; render(); }, t === tab ? "active" : "")),
     ),
-    el(
-      "nav",
-      { class: "tabs", "aria-label": "Practice sections" },
-      [
-        "Spelling",
-        "Bible Verses",
-        "Progress",
-        ...(state.parent ? ["Parent"] : []),
-      ].map((t) =>
-        button(
-          t,
-          () => {
-            tab = t;
-            render();
-          },
-          t === tab ? "active" : "",
-        ),
-      ),
-    ),
-  );
+  ));
+  app.querySelector(".tabs .active")?.setAttribute("aria-current", "page");
   return true;
+}
+// The band on every practice screen: way out, where you are, and one cell per word.
+function practiceBand({ title, status, cells = [], exit }) {
+  return el("div", { class: "practice-band" },
+    el("div", {},
+      exit,
+      el("span", { class: "title" }, title),
+      el("span", { class: "status" }, status),
+      cells.length ? el("span", { class: "chart-cells", "aria-hidden": "true" }, cells.map((c) => el("i", { class: c }))) : null,
+    ));
+}
+const exitButton = (label, fn) => button([icon("close"), label], fn, "quiet");
+const roundCells = (n, index, results = []) => Array.from({ length: n }, (_, i) => results[i] || (i === index ? "now" : ""));
+function niceDate(iso) {
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+// Practice fields get the on-screen keyboard on touch devices; physical keys still work.
+function practiceField(node) {
+  node.dataset.practiceField = "";
+  if (onScreenKeyboard()) node.setAttribute("inputmode", "none");
+  return node;
+}
+function dockKeyboard(options) {
+  if (!onScreenKeyboard()) return null;
+  const keyboard = createKeyboard(options);
+  app.append(keyboard);
+  return keyboard;
 }
 async function selectKid(k) {
   kid = k;
@@ -327,43 +325,28 @@ async function selectKid(k) {
 }
 function render() {
   if (!shell()) {
-    app.append(
-      el(
-        "section",
-        { class: "hero" },
-        el("span", { class: "badge" }, state.family?.name || "Welcome home"),
+    app.dataset.tone = "parent";
+    app.append(el("div", { class: "band" },
+      el("div", { class: "band-head" },
         el("h1", {}, "Who’s ready to grow?"),
-        el(
-          "p",
-          {},
-          "Pick your name for spelling, Bible verses, and a little daily progress.",
-        ),
-      ),
-      el(
-        "div",
-        { class: "grid" },
-        state.kids.map((k, i) =>
-          button(
-            [
-              el("span", {}, ["🌻 ", "🌷 ", "🌳 "][i % 3] + k.name),
-              el("small", {}, "Grade " + (k.grade || "—")),
-            ],
-            () => selectKid(k),
-            "kid",
-          ),
-        ),
-      ),
-    );
-    if (!state.kids.length)
-      app.append(el("section", { class: "card" },
-        el("h2", {}, "Your family’s garden starts here"),
-        el("p", {}, state.parent ? "Add a first name or nickname to begin. Then add your own spelling words and Bible verses." : "Ask a parent to unlock Parent mode and add a profile."),
+        el("span", { class: "band-meta" }, state.family?.name || "")),
+    ));
+    if (state.kids.length)
+      app.append(el("p", {}, "Pick your name for spelling, Bible verses, and your progress."),
+        el("div", { class: "roster" }, state.kids.map((k, i) =>
+          button([
+            el("span", { class: "tile", "aria-hidden": "true" }, [...k.name][0]?.toUpperCase() || "?"),
+            el("span", { class: "who" }, el("span", { class: "name" }, k.name), el("span", { class: "grade" }, k.grade ? "Grade " + k.grade : "No grade set")),
+          ], () => selectKid(k), "kid tone-" + (i % 4)),
+        )));
+    else
+      app.append(el("div", { class: "section" },
+        el("div", { class: "section-title" }, el("h2", {}, "Add your first kid")),
+        el("p", {}, state.parent ? "Add a first name or nickname. Then add this week’s spelling words and a Bible verse." : "Ask a parent to unlock Parent mode and add a profile."),
         state.parent ? button("+ Add your first kid", () => editKid()) : button("Unlock Parent mode", unlock),
       ));
     if (state.parent)
-      app.append(
-        button("Manage family & settings", () => parentHome(), "secondary"),
-      );
+      app.append(el("div", { class: "row" }, button("Manage family & settings", () => parentHome(), "secondary")));
     return;
   }
   if (tab === "Spelling") spellingHome();
@@ -371,135 +354,62 @@ function render() {
   else if (tab === "Progress") progressHome();
   else parentHome(true);
 }
+function listActions(l, small = false) {
+  const size = small ? " small" : "";
+  return el("div", { class: "row" },
+    button("Learn", () => startLearning(l.words, l), size.trim()),
+    button("Test", () => startSpelling(l.words, l), "secondary" + size),
+    button("View words", () => wordSheet(l), "quiet" + size),
+    state.parent ? button("Edit", () => editList(l), "quiet small") : null,
+    state.parent ? button(l.archived ? "Restore" : "Archive", () => archive("lists", l), "quiet small") : null,
+  );
+}
 function listCard(l) {
-  return el(
-    "section",
-    { class: "card" },
-    el(
-      "div",
-      { class: "row" },
-      l.sample ? el("span", { class: "badge" }, "Sample") : null,
-      l.archived ? el("span", { class: "badge" }, "Archived") : null,
+  return el("section", { class: "packet", "data-tone": "spelling" },
+    el("div", { class: "packet-strip" },
+      el("h2", {}, l.title),
+      el("span", { class: "band-meta" }, l.words.length + " words"),
     ),
-    el("h3", {}, l.title),
-    el("p", { class: "muted" }, `${l.date} · ${l.words.length} words`),
-    el("small", {}, "New list? Learn first, then take the test."),
-    el(
-      "div",
-      { class: "row" },
-      button("Learn", () => startLearning(l.words, l)),
-      button("Test", () => startSpelling(l.words, l), "secondary"),
-      button("View words", () => wordSheet(l), "secondary"),
+    el("div", { class: "packet-body" },
+      el("p", {}, `${niceDate(l.date)}${l.sample ? " · sample list" : ""}. New this week? Learn the words first, then take the test.`),
+      listActions(l),
     ),
-    state.parent
-      ? el(
-          "div",
-          { class: "row form-actions" },
-          button("Edit", () => editList(l), "quiet small"),
-          button(
-            l.archived ? "Restore" : "Archive",
-            () => archive("lists", l),
-            "quiet small",
-          ),
-        )
-      : null,
+  );
+}
+function listRow(l) {
+  return el("article", { class: "item" },
+    el("div", {}, el("h3", {}, l.title), el("span", { class: "meta" }, `${l.words.length} words · ${niceDate(l.date)}${l.archived ? " · archived" : ""}`)),
+    listActions(l, true),
   );
 }
 function spellingHome() {
   const active = state.lists.filter((l) => !l.archived);
-  app.append(
-    el(
-      "div",
-      { class: "row spread" },
-      el(
-        "p",
-        {},
-        "Listen carefully. Type confidently. Try again when you need to.",
-      ),
-      state.parent ? button("+ Add spelling list", () => editList()) : null,
-    ),
-  );
-  app.append(
-    el(
-      "section",
-      { class: "card row spread" },
-      el(
-        "div",
-        {},
-        el("h2", {}, "Tricky words garden"),
-        el(
-          "p",
-          { class: "muted" },
-          "A little extra practice for words you’ve missed. Three first-try wins help a word graduate.",
-        ),
-      ),
-      button(
-        "Review tricky words",
-        async () => {
-          const ws = await api("/api/tricky?kid=" + kid.id);
-          if (!ws.length) {
-            toast("No tricky words yet. Keep growing!");
-            return;
-          }
-          startSpelling(
-            ws.map((w) => ({ ...w, id: w.word_id })),
-            null,
-            "tricky",
-          );
-        },
-        "secondary",
-      ),
-    ),
-  );
+  if (state.parent) app.append(el("div", { class: "row spread section" }, el("p", { class: "muted" }, "Parent mode: add or edit this week’s words."), button("+ Add spelling list", () => editList())));
   if (!active.length)
-    app.append(
-      el("p", {}, "No lists yet. A parent can add this week’s words."),
-    );
-  if (active[0]) app.append(el("h2", {}, "This week"), listCard(active[0]));
+    app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "No spelling list yet")),
+      el("p", {}, "A parent can add this week’s words in Parent mode. Paste one word per line, with an optional sentence.")));
+  if (active[0]) app.append(listCard(active[0]));
+  app.append(el("div", { class: "section" },
+    el("div", { class: "section-title" }, el("h2", {}, "Tricky words"),
+      button("Review tricky words", async () => {
+        const ws = await api("/api/tricky?kid=" + kid.id);
+        if (!ws.length) { toast("No tricky words yet. Keep growing!"); return; }
+        startSpelling(ws.map((w) => ({ ...w, id: w.word_id })), null, "tricky");
+      }, "secondary small")),
+    el("p", { class: "muted" }, "Words you’ve missed come back here. Spell one right on the first try three times and it graduates."),
+  ));
   if (active.length > 1)
-    app.append(
-      el("h2", {}, "Past weeks"),
-      el("div", { class: "grid" }, active.slice(1).map(listCard)),
-    );
+    app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "Past weeks")), el("div", { class: "rows" }, active.slice(1).map(listRow))));
   if (state.parent && state.lists.some((l) => l.archived))
-    app.append(
-      el(
-        "details",
-        {},
-        el("summary", {}, "Archived lists"),
-        state.lists.filter((l) => l.archived).map(listCard),
-      ),
-    );
+    app.append(el("details", {}, el("summary", {}, "Archived lists"), el("div", { class: "rows" }, state.lists.filter((l) => l.archived).map(listRow))));
 }
 function wordSheet(l) {
   shell();
-  const ol = el(
-    "ol",
-    {},
-    l.words.map((w) =>
-      el(
-        "li",
-        {},
-        el("strong", {}, w.word),
-        w.sentence ? el("div", { class: "muted" }, w.sentence) : null,
-      ),
-    ),
-  );
-  app.append(
-    el(
-      "section",
-      { class: "print-sheet card" },
-      el("h2", {}, l.title),
-      el("p", {}, kid.name + " · " + l.date),
-      ol,
-      el(
-        "div",
-        { class: "row" },
-        button("Print", () => window.print()),
-        button("Back", render, "secondary"),
-      ),
-    ),
-  );
+  app.append(el("section", { class: "print-sheet section" },
+    el("div", { class: "section-title" }, el("h2", {}, l.title), el("span", { class: "muted" }, kid.name + " · " + niceDate(l.date))),
+    el("ol", {}, l.words.map((w) => el("li", {}, el("strong", {}, w.word), w.sentence ? el("div", { class: "muted" }, w.sentence) : null))),
+    el("div", { class: "row form-actions" }, button("Print", () => window.print()), button("Back", render, "secondary")),
+  ));
 }
 function shuffled(a) {
   const out = [...a];
@@ -511,29 +421,36 @@ function shuffled(a) {
 }
 // Every Learn attempt is tagged independently from first-try spelling tests.
 function startLearning(ws, list) {
-  shell();
-  app.append(el("section", {class: "practice card"},
-    el("span", {class: "badge"}, "Learn · recommended for new lists"),
-    el("h2", {}, list.title),
-    el("p", {}, "Listen, copy the word, then try with fewer letters. Always type the whole word. If you miss, compare and try an easier clue."),
-    el("small", {}, "Inspired by Copy–Cover–Compare and vanishing-cue practice."),
-    button("Start learning", async () => {
-      const view = viewVersion;
-      const session = await api("/api/sessions", {kid_id: kid.id, list_id: list.id, word_ids: ws.map(w => w.id), kind: "learn"});
-      if (view !== viewVersion) return;
-      const round = {ws: [...ws], list, session: session.id, index: 0, comparisons: 0};
-      round.learning = newLearnWord(ws[0].word);
-      learnStep(round);
-    }), button("Back", render, "secondary")));
+  shell("practice", "spelling");
+  app.append(practiceBand({ title: list.title, status: "Learn · " + ws.length + " words", cells: roundCells(ws.length, -1), exit: exitButton("Back", render) }),
+    el("section", { class: "desk intro" },
+      el("h2", {}, "Learn the words first"),
+      el("p", {}, "Listen and copy each word. Then a few letters fade, and you type the whole word again. If you miss, compare it and try an easier clue."),
+      el("small", {}, "Based on Copy–Cover–Compare and vanishing-cue practice. Learn rounds don’t count toward test scores."),
+      el("div", { class: "row form-actions" },
+        button("Start learning", async () => {
+          const view = viewVersion;
+          const session = await api("/api/sessions", {kid_id: kid.id, list_id: list.id, word_ids: ws.map(w => w.id), kind: "learn"});
+          if (view !== viewVersion) return;
+          const round = {ws: [...ws], list, session: session.id, index: 0, comparisons: 0};
+          round.learning = newLearnWord(ws[0].word);
+          learnStep(round);
+        }, "primary"))));
+}
+function renderCue(node, text) {
+  // Size the letters so even a long word stays on one line.
+  node.style.setProperty("--n", Math.max(6, text.split(" ").length));
+  node.replaceChildren(...text.split(" ").map((c) => el("span", { class: c === "_" ? "blank" : "" }, c === "_" ? " " : c)));
 }
 function learnStep(round) {
-  shell();
+  shell("practice", "spelling");
   const view = viewVersion, w = round.ws[round.index], step = round.learning.steps[round.learning.index];
-  const answer = input("learn-answer", "", {class: "answer", autocomplete: "off", inputmode: "text", autocapitalize: "off", autocorrect: "off", spellcheck: "false", enterkeyhint: "done", "aria-label": "Type the full word"});
-  const cue = el("p", {class: "verse learn-cue", "aria-label": step.level === 100 ? "No letter clues" : "Letter clues"}, step.cue);
-  const feedback = el("p", {class: "feedback", role: "status", "aria-live": "polite"}, "Type the full word, including the hidden letters.");
+  const answer = practiceField(input("learn-answer", "", {class: "answer", autocomplete: "off", inputmode: "text", autocapitalize: "off", autocorrect: "off", spellcheck: "false", enterkeyhint: "done", "aria-label": "Type the full word"}));
+  const cue = el("p", {class: "cue", "aria-label": step.level === 100 ? "No letter clues" : "Letter clues: " + step.cue.replaceAll("_", "blank")});
+  renderCue(cue, step.cue);
+  const feedback = el("p", {class: "feedback", role: "status", "aria-live": "polite"}, "Type the whole word, hidden letters too.");
   let done = false, comparisonTimer;
-  const check = el("button", {type: "submit"}, "Check word");
+  const check = el("button", {type: "submit", form: "practice-form", class: "primary"}, "Check word");
   const continueButton = button("Continue", async () => {
     clearTimeout(comparisonTimer);
     if (round.learning.learned) {
@@ -542,9 +459,9 @@ function learnStep(round) {
       round.learning = newLearnWord(round.ws[round.index].word);
     }
     learnStep(round);
-  });
+  }, "primary");
   continueButton.hidden = true;
-  const form = el("form", {onsubmit: async e => {
+  const form = el("form", {id: "practice-form", onsubmit: async e => {
     e.preventDefault();
     if (done || check.disabled) return;
     check.disabled = true;
@@ -562,25 +479,33 @@ function learnStep(round) {
         focus(continueButton);
       } else {
         round.comparisons++;
-        cue.textContent = w.word;
+        renderCue(cue, [...w.word].join(" "));
+        cue.classList.add("reveal");
         feedback.textContent = "Compare: " + w.word + ". Next, try one easier clue.";
         feedback.className = "feedback retry";
         continueButton.disabled = true;
         comparisonTimer = setTimeout(() => {
           if (view !== viewVersion) return;
-          cue.textContent = round.learning.steps[round.learning.index].cue;
+          renderCue(cue, round.learning.steps[round.learning.index].cue);
+          cue.classList.remove("reveal");
           continueButton.disabled = false;
           focus(continueButton);
         }, 1800);
         say(w.word);
       }
     } catch (err) {toast(err.message); check.disabled = false;}
-  }}, el("label", {for: "learn-answer"}, "Type the full word"), answer, feedback, check, continueButton);
-  app.append(el("section", {class: "practice card"},
-    el("span", {class: "badge"}, `Learn · word ${round.index + 1} of ${round.ws.length} · ${step.level}% hidden`),
-    el("h2", {}, step.level === 0 ? "Listen and copy" : step.level === 100 ? "Now spell from memory" : "Fill in the fading letters"),
-    cue, button("🔊 Say again", () => say([w.word, w.sentence, w.word]), "secondary"), form,
-    button("End learning", () => {if (confirm("Leave learning? Your attempts will still be saved.")) render();}, "quiet")));
+  }}, el("label", {for: "learn-answer"}, "Type the full word"), answer, feedback);
+  const actions = el("span", {class: "key-actions"}, check, continueButton);
+  const prompt = step.level === 0 ? "Listen and copy" : step.level === 100 ? "Now spell it from memory" : "Fill in the fading letters";
+  app.append(
+    practiceBand({ title: round.list?.title || "Learn", status: `Learn · word ${round.index + 1} of ${round.ws.length} · ${step.level}% hidden`,
+      cells: roundCells(round.ws.length, round.index, round.ws.map((_, i) => i < round.index ? "done" : "")),
+      exit: exitButton("End learning", () => {if (confirm("Leave learning? Your attempts will still be saved.")) render();}) }),
+    el("section", {class: "desk"},
+      el("h2", {}, prompt), cue,
+      el("div", {class: "listen"}, button([icon("speaker"), "Say again"], () => say([w.word, w.sentence, w.word]), "secondary")),
+      form));
+  if (!dockKeyboard({target: () => answer, action: actions})) form.append(actions);
   focus(answer);
   say([w.word, w.sentence, w.word]);
   prefetchSpeech(round.ws.slice(round.index, round.index + 2).flatMap(word => [word.word, word.sentence]));
@@ -589,67 +514,41 @@ async function finishLearning(round) {
   const view = viewVersion;
   await api("/api/sessions/complete", {session_id: round.session});
   if (view !== viewVersion) return;
-  shell();
-  app.append(el("section", {class: "practice card"}, el("span", {class: "badge"}, "Learning complete"),
-    el("h1", {}, "Ready to try on your own!"),
-    el("p", {}, `${round.ws.length} words learned · ${round.comparisons} compare-and-try-again moments.`),
-    el("p", {}, "Learning is practice. Only first tries in Test count toward spelling accuracy."),
-    button("Take the test now", () => startSpelling(round.ws, round.list)), button("Back to lists", render, "secondary")));
+  shell("practice", "spelling");
+  app.append(practiceBand({ title: round.list?.title || "Learn", status: "Learning complete", cells: roundCells(round.ws.length, -1, round.ws.map(() => "done")), exit: exitButton("Done", render) }),
+    el("section", {class: "desk"},
+      el("h1", {}, "Ready to try on your own!"),
+      el("p", {}, `${round.ws.length} words learned · ${round.comparisons} compare-and-try-again moments.`),
+      el("p", {class: "muted"}, "Learning is practice. Only first tries in Test count toward spelling accuracy."),
+      el("div", {class: "row form-actions"}, button("Take the test now", () => startSpelling(round.ws, round.list), "primary"), button("Back to lists", render, "secondary"))));
 }
 async function startSpelling(ws, list = null, kind = "spelling") {
-  shell();
+  shell("practice", "spelling");
   const shuffle = input("shuffle", "", { type: "checkbox", checked: true });
-  app.append(
-    el(
-      "section",
-      { class: "practice card" },
-      el(
-        "span",
-        { class: "badge" },
-        kind === "tricky" ? "Tricky words" : "Spelling practice",
-      ),
-      el("h2", {}, list?.title || "Your review round"),
-      el(
-        "p",
-        {},
-        `${ws.length} words. You get one retry. Listen to the word, a sentence, then the word again.`,
-      ),
+  const title = list?.title || (kind === "tricky" ? "Tricky words" : "Review round");
+  app.append(practiceBand({ title, status: (kind === "tricky" ? "Tricky words" : "Spelling test") + " · " + ws.length + " words", cells: roundCells(ws.length, -1), exit: exitButton("Back", render) }),
+    el("section", { class: "desk intro" },
+      el("h2", {}, kind === "tricky" ? "Your tricky words" : "Spelling test"),
+      el("p", {}, `${ws.length} words. You’ll hear the word, a sentence, then the word again. You get one retry.`),
       el("label", { class: "inline" }, shuffle, "Shuffle the words"),
-      el(
-        "div",
-        { class: "row" },
+      el("div", { class: "row form-actions" },
         button("Let’s begin", async () => {
           const view = viewVersion;
-          const session = await api("/api/sessions", {
-            kid_id: kid.id,
-            list_id: list?.id,
-            word_ids: ws.map((w) => w.id),
-            kind,
-          });
+          const session = await api("/api/sessions", { kid_id: kid.id, list_id: list?.id, word_ids: ws.map((w) => w.id), kind });
           if (view !== viewVersion) return;
-          const round = {
-            ws: shuffle.checked ? shuffled(ws) : [...ws],
-            list,
-            kind,
-            session: session.id,
-            index: 0,
-            first: 0,
-            misses: [],
-          };
-          spellingStep(round);
-        }),
-        button("Back", render, "secondary"),
+          spellingStep({ ws: shuffle.checked ? shuffled(ws) : [...ws], list, kind, session: session.id, index: 0, first: 0, misses: [], results: [] });
+        }, "primary"),
       ),
     ),
   );
 }
 function spellingStep(round) {
-  shell();
+  shell("practice", "spelling");
   const view = viewVersion;
   const w = round.ws[round.index];
   let retry = false,
     done = false;
-  const answer = input("answer", "", {
+  const answer = practiceField(input("answer", "", {
     class: "answer",
     autocomplete: "off",
     autocorrect: "off",
@@ -658,29 +557,24 @@ function spellingStep(round) {
     enterkeyhint: "done",
     spellcheck: "false",
     "aria-label": "Type the spelling word",
-  });
-  const feedback = el(
-    "p",
-    { class: "feedback", role: "status", "aria-live": "polite" },
-    "Ready when you are.",
-  );
-  const check = el("button", { type: "submit" }, "Check word ↵");
+  }));
+  const feedback = el("p", { class: "feedback", role: "status", "aria-live": "polite" }, "Ready when you are.");
+  const check = el("button", { type: "submit", form: "practice-form", class: "primary" }, "Check word");
   const replay = () => say([w.word, w.sentence, w.word]);
+  const band = () => practiceBand({ title: round.list?.title || (round.kind === "tricky" ? "Tricky words" : "Review round"), status: `Word ${round.index + 1} of ${round.ws.length}`,
+    cells: roundCells(round.ws.length, round.index, round.results), exit: exitButton("End practice", () => { if (confirm("Leave this round? Your attempts will still be saved.")) render(); }) });
   const form = el(
     "form",
     {
+      id: "practice-form",
       onsubmit: async (e) => {
         e.preventDefault();
         if (check.disabled) return;
         if (done) {
           check.disabled = true;
           try {
-            if (round.index + 1 === round.ws.length)
-              await finishSpelling(round);
-            else {
-              round.index++;
-              spellingStep(round);
-            }
+            if (round.index + 1 === round.ws.length) await finishSpelling(round);
+            else { round.index++; spellingStep(round); }
           } catch (err) {
             toast(err.message);
           } finally {
@@ -690,18 +584,13 @@ function spellingStep(round) {
         }
         check.disabled = true;
         try {
-          const result = await api("/api/attempts", {
-            session_id: round.session,
-            word_id: w.id,
-            typed: answer.value,
-          });
+          const result = await api("/api/attempts", { session_id: round.session, word_id: w.id, typed: answer.value });
           if (view !== viewVersion) return;
           if (result.correct) {
             if (!retry) round.first++;
-            feedback.textContent = retry
-              ? "You got it. Nice persistence!"
-              : "Yes! First-try success!";
+            feedback.textContent = retry ? "You got it. Nice persistence!" : "Yes! First-try success!";
             feedback.className = "feedback good";
+            round.results[round.index] = retry ? "miss" : "done";
             done = true;
           } else if (!retry) {
             retry = true;
@@ -713,15 +602,14 @@ function spellingStep(round) {
           } else {
             feedback.textContent = "Let’s learn it: " + w.word;
             feedback.className = "feedback retry";
+            round.results[round.index] = "miss";
             done = true;
             say(`${w.word}. ${[...w.word].join(", ")}. ${w.word}.`, 0.8);
           }
           if (done) {
             answer.disabled = true;
-            check.textContent =
-              round.index === round.ws.length - 1
-                ? "See my results ↵"
-                : "Next word ↵";
+            app.querySelector(".practice-band").replaceWith(band());
+            check.textContent = round.index === round.ws.length - 1 ? "See my results" : "Next word";
             focus(check);
           } else focus(answer);
         } catch (err) {
@@ -734,45 +622,19 @@ function spellingStep(round) {
     el("label", { for: "answer" }, "Type the word you hear"),
     answer,
     feedback,
-    check,
   );
-  app.append(
-    el(
-      "section",
-      { class: "practice card" },
-      el(
-        "span",
-        { class: "badge" },
-        `Word ${round.index + 1} of ${round.ws.length}`,
-      ),
+  app.append(band(),
+    el("section", { class: "desk" },
       el("h2", {}, "Listen, then spell"),
-      el(
-        "div",
-        { class: "row" },
-        button("🔊 Say again", replay, "secondary"),
-        button(
-          "Sentence",
-          () =>
-            w.sentence ? say(w.sentence) : toast("This word has no sentence."),
-          "secondary",
-        ),
-        button("🐢 Slowly", () => say(w.word, 0.75), "secondary"),
+      el("div", { class: "listen" },
+        button([icon("speaker"), "Say again"], replay, "secondary"),
+        button([icon("sentence"), "Sentence"], () => w.sentence ? say(w.sentence) : toast("This word has no sentence."), "secondary"),
+        button([icon("slow"), "Slowly"], () => say(w.word, 0.75), "secondary"),
       ),
       form,
-      el(
-        "div",
-        { class: "form-actions" },
-        button(
-          "End practice",
-          () => {
-            if (confirm("Leave this round? Your attempts will still be saved."))
-              render();
-          },
-          "quiet small",
-        ),
-      ),
     ),
   );
+  if (!dockKeyboard({ target: () => answer, action: check })) form.append(check, el("span", { class: "enter-hint" }, "or press Enter"));
   focus(answer);
   replay();
   // Warm this word and the next word (including their sentences), then one ahead.
@@ -782,339 +644,164 @@ async function finishSpelling(r) {
   const view = viewVersion;
   await api("/api/sessions/complete", { session_id: r.session });
   if (view !== viewVersion) return;
-  shell();
-  app.append(
-    el(
-      "section",
-      { class: "practice card" },
-      el("span", { class: "badge" }, "Round complete"),
+  shell("practice", "spelling");
+  app.append(practiceBand({ title: r.list?.title || "Review round", status: "Round complete", cells: roundCells(r.ws.length, -1, r.results), exit: exitButton("Done", render) }),
+    el("section", { class: "desk" },
       el("h1", {}, "Look at you grow!"),
       el("div", { class: "score" }, `${r.first} / ${r.ws.length}`),
       el("p", {}, "Words spelled correctly on the first try."),
       r.misses.length
-        ? el(
-            "div",
-            {},
+        ? el("div", {},
             el("h3", {}, "A little more practice"),
-            el("p", {}, r.misses.map((w) => w.word).join(" · ")),
-            button("Practice missed words", () =>
-              startSpelling(r.misses, r.list, r.kind),
-            ),
-          )
-        : el("p", {}, "Every word was a first-try win. 🌟"),
-      el(
-        "div",
-        { class: "row form-actions" },
+            el("p", { class: "comparison" }, r.misses.map((w) => el("span", { class: "miss" }, w.word))),
+            button("Practice missed words", () => startSpelling(r.misses, r.list, r.kind), "primary"))
+        : el("p", {}, "Every word was a first-try win."),
+      el("div", { class: "row form-actions" },
         button("Back to spelling", render, "secondary"),
-        button(
-          "See progress",
-          () => {
-            tab = "Progress";
-            render();
-          },
-          "secondary",
-        ),
+        button("See progress", () => { tab = "Progress"; render(); }, "secondary"),
       ),
     ),
   );
 }
 function verseHome() {
   const active = state.verses.filter((v) => !v.archived);
-  app.append(
-    el(
-      "div",
-      { class: "row spread" },
-      el("p", {}, "Read it. Remember it. Carry it with you."),
-      state.parent ? button("+ Add Bible verse", () => editVerse()) : null,
-    ),
-  );
+  if (state.parent) app.append(el("div", { class: "row spread section" }, el("p", { class: "muted" }, "Parent mode: paste the wording your family uses."), button("+ Add Bible verse", () => editVerse())));
   if (!active.length)
-    app.append(el("p", {}, "No verses yet. A parent can paste one to begin."));
-  app.append(el("div", { class: "grid" }, active.map(verseCard)));
+    app.append(el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, "No verse yet")),
+      el("p", {}, "A parent can paste a verse in Parent mode to begin.")));
+  app.append(el("div", {}, active.map(verseCard)));
   if (state.parent && state.verses.some((v) => v.archived))
-    app.append(
-      el(
-        "details",
-        {},
-        el("summary", {}, "Archived verses"),
-        state.verses.filter((v) => v.archived).map(verseCard),
-      ),
-    );
+    app.append(el("details", {}, el("summary", {}, "Archived verses"), state.verses.filter((v) => v.archived).map(verseCard)));
 }
 function verseCard(v) {
-  return el(
-    "section",
-    { class: "card" },
-    el(
-      "div",
-      {},
-      v.sample ? el("span", { class: "badge" }, "Sample") : null,
-      el("span", { class: "badge" }, v.translation || "Family verse"),
+  return el("section", { class: "packet", "data-tone": "verses" },
+    el("div", { class: "packet-strip" },
+      el("h2", {}, v.reference),
+      el("span", { class: "band-meta" }, [v.translation, v.sample ? "Sample" : ""].filter(Boolean).join(" · "))),
+    el("div", { class: "packet-body" },
+      el("p", { class: "verse" }, v.text),
+      v.due_date ? el("p", { class: "muted" }, "Practice by " + niceDate(v.due_date)) : null,
+      el("div", { class: "row" },
+        button("Practice this verse", () => verseMenu(v)),
+        state.parent ? button("Edit", () => editVerse(v), "quiet small") : null,
+        state.parent ? button(v.archived ? "Restore" : "Archive", () => archive("verses", v), "quiet small") : null,
+      ),
     ),
-    el("h2", {}, v.reference),
-    el("p", { class: "verse" }, v.text),
-    v.due_date
-      ? el("p", { class: "muted" }, "Practice by " + v.due_date)
-      : null,
-    button("Practice this verse", () => verseMenu(v)),
-    state.parent
-      ? el(
-          "div",
-          { class: "row form-actions" },
-          button("Edit", () => editVerse(v), "quiet small"),
-          button(
-            v.archived ? "Restore" : "Archive",
-            () => archive("verses", v),
-            "quiet small",
-          ),
-        )
-      : null,
   );
 }
+const VERSE_MODES = [
+  ["read", "Read & listen", "Hear the reference and the whole verse."],
+  ["blanks", "Fill the blanks", "Start with a few missing words, then hide more."],
+  ["first", "First-letter clues", "Type the verse with the first letter of each word."],
+  ["memory", "From memory", "Type the whole verse with no clues."],
+  ["reference", "Reference quiz", "Remember where the verse is found."],
+];
 function verseMenu(v) {
   shell();
-  app.append(
-    el(
-      "section",
-      { class: "card" },
-      el("span", { class: "badge" }, v.translation || "Bible verse"),
-      el("h2", {}, v.reference),
-      el("p", {}, "Take one step at a time. Choose your challenge."),
-      el(
-        "div",
-        { class: "grid" },
-        [
-          [
-            "read",
-            "1 · Read & listen",
-            "Hear the reference and the whole verse.",
-          ],
-          [
-            "blanks",
-            "2 · Fill the blanks",
-            "Build from a few blanks to every word.",
-          ],
-          [
-            "first",
-            "3 · First-letter clues",
-            "Use the first letter of each word.",
-          ],
-          ["memory", "4 · From memory", "Type the whole verse, with no clues."],
-          [
-            "reference",
-            "5 · Reference quiz",
-            "Remember where the verse is found.",
-          ],
-        ].map(([mode, title, description]) =>
-          el(
-            "section",
-            { class: "card" },
-            el("h3", {}, title),
-            el("p", {}, description),
-            button("Start", () => versePractice(v, mode)),
-          ),
-        ),
-      ),
-      el(
-        "div",
-        { class: "form-actions" },
-        button("Back to verses", render, "secondary"),
-      ),
-    ),
-  );
+  app.append(el("div", { class: "section" },
+    el("div", { class: "section-title" }, el("h2", {}, v.reference), el("span", { class: "muted" }, v.translation || "")),
+    el("p", {}, "Take one step at a time. Each step hides a little more."),
+    el("ol", { class: "modes", "data-tone": "verses" }, VERSE_MODES.map(([mode, title, description], i) =>
+      el("li", {}, button([el("span", { class: "step", "aria-hidden": "true" }, i + 1), el("span", { class: "what" }, el("strong", {}, title), el("span", {}, description))], () => versePractice(v, mode))))),
+    button("Back to verses", render, "secondary"),
+  ));
 }
 async function versePractice(v, mode, level = 25) {
   const previousView = viewVersion;
   const session = await api("/api/sessions", { kid_id: kid.id, kind: "verse" });
   if (previousView !== viewVersion) return;
-  shell();
-  const area = el("section", { class: "card" }),
+  shell("practice", "verses");
+  const modeName = Object.fromEntries(VERSE_MODES.map(([m, t]) => [m, t]))[mode];
+  const desk = el("section", { class: "desk" }),
     ws = v.text.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) || [];
   let indices = [],
-    blankInputs = [];
-  area.append(
-    el(
-      "span",
-      { class: "badge" },
-      {
-        read: "Read & listen",
-        blanks: "Fill the blanks",
-        first: "First-letter clues",
-        memory: "From memory",
-        reference: "Reference quiz",
-      }[mode],
-    ),
-    el(
-      "h2",
-      {},
-      mode === "reference" ? "Where is this verse found?" : v.reference,
-    ),
-  );
-  const response = textArea("verse-answer", "", {
+    blankInputs = [],
+    keyboard = null;
+  app.append(practiceBand({ title: mode === "reference" ? "Reference quiz" : v.reference, status: modeName + (mode === "blanks" ? ` · ${level}% hidden` : ""), exit: exitButton("Back to modes", () => verseMenu(v)) }), desk);
+  desk.append(el("h2", {}, mode === "reference" ? "Where is this verse found?" : mode === "read" ? "Read it, then say it" : "Type what’s missing"));
+  const response = practiceField(textArea("verse-answer", "", {
     autocomplete: "off",
     autocorrect: "off",
     autocapitalize: "none",
     spellcheck: "false",
-    placeholder:
-      mode === "reference" ? "Book chapter:verse" : "Type the verse here…",
-    "aria-label":
-      mode === "reference" ? "Bible reference" : "Your verse from memory",
-  });
+    placeholder: mode === "reference" ? "Book chapter:verse" : "Type the verse here…",
+    "aria-label": mode === "reference" ? "Bible reference" : "Your verse from memory",
+  }));
   if (mode === "read") {
-    area.append(
+    desk.append(
       el("p", { class: "verse" }, v.text),
-      button("🔊 Listen", () => say([v.reference, v.text])),
-      el(
-        "p",
-        { class: "muted" },
-        "Read along, then try saying it without looking.",
-      ),
-      button(
-        "I practiced this verse",
-        async () => {
-          await api("/api/verse-attempts", {
-            session_id: session.id,
-            verse_id: v.id,
-            mode,
-            typed: "",
-          });
-          await api("/api/sessions/complete", { session_id: session.id });
-          toast("Practice saved. Keep growing!");
-          verseMenu(v);
-        },
-        "secondary",
-      ),
+      el("div", { class: "listen" }, button([icon("speaker"), "Listen"], () => say([v.reference, v.text]), "secondary")),
+      el("p", { class: "muted" }, "Read along, then try saying it without looking."),
+      button("I practiced this verse", async () => {
+        await api("/api/verse-attempts", { session_id: session.id, verse_id: v.id, mode, typed: "" });
+        await api("/api/sessions/complete", { session_id: session.id });
+        toast("Practice saved. Keep growing!");
+        verseMenu(v);
+      }, "primary"),
     );
-  } else {
-    if (mode === "blanks") {
-      const select = el(
-        "select",
-        {
-          id: "blank-level",
-          onchange: (e) => versePractice(v, mode, Number(e.target.value)),
-        },
-        [25, 50, 75, 100].map((n) =>
-          el("option", { value: n, selected: n === level }, `${n}% hidden`),
+    return;
+  }
+  const form = el("form", { id: "practice-form", class: "verse-form" });
+  const submit = el("button", { type: "submit", form: "practice-form", class: "primary" }, "Check my work");
+  if (mode === "blanks") {
+    const select = el("select", { id: "blank-level", onchange: (e) => versePractice(v, mode, Number(e.target.value)) },
+      [25, 50, 75, 100].map((n) => el("option", { value: n, selected: n === level }, `${n}% hidden`)));
+    form.append(field("Choose your challenge", select));
+    indices = shuffled(ws.map((_, i) => i)).slice(0, Math.ceil((ws.length * level) / 100)).sort((a, b) => a - b);
+    const blanks = el("div", { class: "blanks" });
+    ws.forEach((w, i) => {
+      if (indices.includes(i)) {
+        const n = practiceField(input("blank-" + i, "", { "aria-label": `Missing word ${i + 1}`, autocomplete: "off", autocorrect: "off", autocapitalize: "none", spellcheck: "false" }));
+        blankInputs.push(n);
+        blanks.append(n);
+      } else blanks.append(el("span", {}, w));
+    });
+    form.append(el("p", { class: "muted" }, onScreenKeyboard() ? "Type one word in each blank. Next moves to the following blank." : "Type one word in each blank. Tab moves to the next one."), blanks);
+  }
+  if (mode === "first") form.append(el("p", { class: "verse" }, ws.map((w) => w[0] + "·").join(" ")));
+  if (mode === "reference") form.append(el("p", { class: "verse" }, v.text));
+  if (mode !== "blanks") form.append(field(mode === "reference" ? "Reference" : "Your verse", response));
+  let current = blankInputs[0] || response;
+  form.addEventListener("focusin", (e) => { if (e.target.matches("[data-practice-field]")) current = e.target; });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (submit.disabled) return;
+    submit.disabled = true;
+    try {
+      const result = await api("/api/verse-attempts", {
+        session_id: session.id, verse_id: v.id, mode, level, indices,
+        typed: mode === "blanks" ? blankInputs.map((n) => n.value).join(" ") : response.value,
+      });
+      await api("/api/sessions/complete", { session_id: session.id });
+      stopSpeaking();
+      keyboard?.remove();
+      desk.replaceChildren(
+        el("h2", {}, result.accuracy === 100 ? "You remembered every word!" : "You’re building a strong memory."),
+        el("div", { class: "score" }, result.accuracy + "%"),
+        el("p", {}, "Green words matched. Underlined words are a gentle reminder for next time."),
+        el("div", { class: "comparison" }, result.details.map((d) =>
+          el("span", { class: d.correct ? "" : "miss", title: d.typed && !d.correct ? "You typed: " + d.typed : "" }, d.word || `+ ${d.typed}`))),
+        el("div", { class: "row form-actions" },
+          button("Try this again", () => versePractice(v, mode, level), "primary"),
+          mode === "blanks" && level < 100 ? button("Next level", () => versePractice(v, mode, level + 25), "secondary") : null,
+          button("Choose a mode", () => verseMenu(v), "secondary"),
         ),
       );
-      area.append(field("Choose your challenge", select));
-      indices = shuffled(ws.map((_, i) => i))
-        .slice(0, Math.ceil((ws.length * level) / 100))
-        .sort((a, b) => a - b);
-      const blanks = el("div", { class: "blanks" });
-      ws.forEach((w, i) => {
-        if (indices.includes(i)) {
-          const n = input("blank-" + i, "", {
-            "aria-label": `Missing word ${i + 1}`,
-            autocomplete: "off",
-            autocorrect: "off",
-            autocapitalize: "none",
-            spellcheck: "false",
-          });
-          blankInputs.push(n);
-          blanks.append(n);
-        } else blanks.append(el("span", {}, w));
-      });
-      area.append(
-        el("p", {}, "Type one word in each blank. Tab moves to the next one."),
-        blanks,
-      );
+    } catch (err) {
+      toast(err.message);
+      submit.disabled = false;
     }
-    if (mode === "first")
-      area.append(
-        el("p", { class: "verse" }, ws.map((w) => w[0] + "·").join(" ")),
-      );
-    if (mode === "reference") area.append(el("p", { class: "verse" }, v.text));
-    if (mode !== "blanks")
-      area.append(
-        field(mode === "reference" ? "Reference" : "Your verse", response),
-      );
-    const form = el("form", {
-      onsubmit: async (e) => {
-        e.preventDefault();
-        const submit = form.querySelector("button[type=submit]");
-        if (submit.disabled) return;
-        submit.disabled = true;
-        try {
-          const result = await api("/api/verse-attempts", {
-            session_id: session.id,
-            verse_id: v.id,
-            mode,
-            level,
-            indices,
-            typed:
-              mode === "blanks"
-                ? blankInputs.map((n) => n.value).join(" ")
-                : response.value,
-          });
-          await api("/api/sessions/complete", { session_id: session.id });
-          stopSpeaking();
-          area.replaceChildren(
-            el("span", { class: "badge" }, "Practice saved"),
-            el(
-              "h2",
-              {},
-              result.accuracy === 100
-                ? "You remembered every word!"
-                : "You’re building a strong memory.",
-            ),
-            el("div", { class: "score" }, result.accuracy + "%"),
-            el(
-              "p",
-              {},
-              "Green words matched. Peach words are a gentle reminder for next time.",
-            ),
-            el(
-              "div",
-              { class: "comparison" },
-              result.details.map((d) =>
-                el(
-                  "span",
-                  {
-                    class: d.correct ? "" : "miss",
-                    title: d.typed && !d.correct ? "You typed: " + d.typed : "",
-                  },
-                  d.word || `+ ${d.typed}`,
-                ),
-              ),
-            ),
-            el(
-              "div",
-              { class: "row form-actions" },
-              button("Try this again", () => versePractice(v, mode, level)),
-              mode === "blanks" && level < 100
-                ? button(
-                    "Next level",
-                    () => versePractice(v, mode, level + 25),
-                    "secondary",
-                  )
-                : null,
-              button("Choose a mode", () => verseMenu(v), "secondary"),
-            ),
-          );
-        } catch (err) {
-          toast(err.message);
-          submit.disabled = false;
-        }
-      },
-    });
-    // Move the challenge fields into the form so Enter checks short blank inputs.
-    const content = [...area.children].slice(2);
-    for (const n of content) form.append(n);
-    form.append(
-      el("button", { type: "submit", class: "form-actions" }, "Check my work"),
-    );
-    area.append(form);
-    focus(blankInputs[0] || response);
-  }
-  area.append(
-    el(
-      "div",
-      { class: "form-actions" },
-      button("Back to modes", () => verseMenu(v), "quiet"),
-    ),
-  );
-  app.append(area);
+  });
+  desk.append(form);
+  keyboard = dockKeyboard({
+    target: () => current,
+    action: submit,
+    symbols: mode !== "blanks",
+    space: mode === "blanks" ? "next" : "type",
+    next: () => { const i = blankInputs.indexOf(current); (blankInputs[i + 1] || blankInputs[0])?.focus(); },
+  });
+  if (!keyboard) form.append(submit);
+  focus(current);
 }
 async function progressHome() {
   const k = kid.id,
@@ -1124,122 +811,43 @@ async function progressHome() {
     const p = await api("/api/progress?kid=" + k);
     if (kid?.id !== k || tab !== "Progress" || view !== viewVersion) return;
     $("progress-loading")?.remove();
-    app.append(
-      el(
-        "div",
-        { class: "grid" },
-        el(
-          "section",
-          { class: "card" },
-          el("span", { class: "metric" }, p.listsCompleted),
-          "Lists completed",
-        ),
-        el(
-          "section",
-          { class: "card" },
-          el("span", { class: "metric" }, p.streak + " 🌱"),
-          "Day practice streak",
-          el("small", {}, "Practice days use UTC."),
-        ),
-        el(
-          "section",
-          { class: "card" },
-          el("span", { class: "metric" }, p.tricky.length),
-          "Tricky words growing stronger",
-        ),
-      ),
-    );
-    const chart = el(
-      "section",
-      { class: "card" },
-      el("h2", {}, "Spelling first-try accuracy"),
-    );
-    if (!p.charts.length)
-      chart.append(el("p", {}, "Your spelling progress will grow here."));
-    else chart.append(drawChart(p.charts));
-    app.append(chart);
-    if (p.learning) app.append(el("section", {class: "card"},
-      el("h2", {}, "Learn practice · separate from test accuracy"),
-      el("p", {}, `${p.learning.wordsLearned} words learned · ${p.learning.attempts} fading-cue attempts · ${p.learning.sessionsCompleted} completed learning rounds`)));
+    app.append(el("div", { class: "stats" },
+      el("div", {}, el("span", { class: "metric" }, p.listsCompleted), el("span", {}, "Lists completed")),
+      el("div", {}, el("span", { class: "metric" }, p.streak), el("span", {}, p.streak === 1 ? "Day in a row" : "Days in a row"), el("small", {}, "Practice days use UTC.")),
+      el("div", {}, el("span", { class: "metric" }, p.tricky.length), el("span", {}, "Tricky words")),
+    ));
+    app.append(el("div", { class: "section" },
+      el("div", { class: "section-title" }, el("h2", {}, "First-try spelling accuracy")),
+      p.charts.length ? drawChart(p.charts) : el("p", {}, "Take a spelling test and your first-try accuracy for each list shows up here."),
+      p.learning ? el("p", { class: "muted" }, `Learn practice, kept separate from test scores: ${p.learning.wordsLearned} words learned · ${p.learning.attempts} fading-cue attempts · ${p.learning.sessionsCompleted} completed rounds.`) : null,
+    ));
     if (state.parent && p.learnAttempts?.length) app.append(el("details", {},
       el("summary", {}, "Parent detail · recent Learn attempts"),
       table(["Word", "Letters hidden", "Typed", "Correct"], p.learnAttempts.slice(0, 100).map(a => [a.word, a.step + "%", a.typed, a.correct ? "Yes" : "Compare"]))));
-    app.append(
-      el(
-        "div",
-        { class: "two" },
-        el(
-          "section",
-          { class: "card" },
-          el("h2", {}, "Words to keep practicing"),
-          p.tricky.length
-            ? el(
-                "ol",
-                {},
-                p.tricky
-                  .slice(0, 12)
-                  .map((w) =>
-                    el(
-                      "li",
-                      {},
-                      w.word,
-                      el(
-                        "small",
-                        {},
-                        `${w.misses} misses · ${w.streak}/3 first-try wins since last miss`,
-                      ),
-                    ),
-                  ),
-              )
-            : el("p", {}, "No tricky words right now!"),
-        ),
-        el(
-          "section",
-          { class: "card" },
-          el("h2", {}, "Verse garden"),
-          p.mastery.map((v) =>
-            el(
-              "p",
-              {},
-              v.reference + " ",
-              el("strong", {}, "★".repeat(v.stars) + "☆".repeat(3 - v.stars)),
-              el(
-                "small",
-                {},
-                `${v.best}% best of last 10 attempts · ${v.attempts} recent practices`,
-              ),
-            ),
-          ),
-          el(
-            "small",
-            {},
-            "One star: 70%+. Two: 95%+. Three: 95%+ from memory or first-letter clues. Read/listen does not earn mastery.",
-          ),
-        ),
+    app.append(el("div", { class: "two" },
+      el("div", { class: "section" },
+        el("div", { class: "section-title" }, el("h2", {}, "Words to keep practicing")),
+        p.tricky.length
+          ? el("ul", { class: "rows" }, p.tricky.slice(0, 12).map((w) => el("li", {}, el("strong", {}, w.word), el("span", { class: "meta" }, `${w.misses} ${w.misses === 1 ? "miss" : "misses"} · ${w.streak} of 3 first-try wins`))))
+          : el("p", {}, "No tricky words right now!"),
       ),
-    );
-    app.append(
-      el(
-        "section",
-        { class: "card" },
-        el("h2", {}, "Recent practice sessions"),
-        p.sessions.length
-          ? el(
-              "ul",
-              {},
-              p.sessions
-                .slice(0, 12)
-                .map((s) =>
-                  el(
-                    "li",
-                    {},
-                    `${new Date(s.created_at).toLocaleString()} · ${s.kind === "learn" ? "Learn" : s.kind === "verse" ? "Verse" : "Test"} · ${s.title || s.kind} · ${s.completed ? "Complete" : "In progress"}`,
-                  ),
-                ),
-            )
-          : el("p", {}, "Your first practice can be today."),
+      el("div", { class: "section" },
+        el("div", { class: "section-title" }, el("h2", {}, "Verse garden")),
+        p.mastery.length ? el("ul", { class: "rows" }, p.mastery.map((v) => el("li", {},
+          el("strong", {}, v.reference),
+          el("span", { class: "stars", role: "img", "aria-label": `${v.stars} of 3 stars` }, [0, 1, 2].map((i) => icon("star", { filled: i < v.stars }))),
+          el("span", { class: "meta" }, `Best ${v.best}% of the last 10 · ${v.attempts} ${v.attempts === 1 ? "practice" : "practices"}`)))) : el("p", {}, "Practice a verse to start growing stars."),
+        el("small", {}, "One star: 70%+. Two: 95%+. Three: 95%+ from memory or with first-letter clues. Read & listen doesn’t earn stars."),
       ),
-    );
+    ));
+    app.append(el("div", { class: "section" },
+      el("div", { class: "section-title" }, el("h2", {}, "Recent practice")),
+      p.sessions.length
+        ? el("ul", { class: "rows" }, p.sessions.slice(0, 12).map((s) => el("li", {},
+            el("span", {}, s.kind === "verse" ? el("strong", {}, "Verse practice") : [el("strong", {}, s.kind === "learn" ? "Learn" : "Test"), " · ", s.title || "Tricky words"]),
+            el("span", { class: "meta" }, `${new Date(s.created_at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${s.completed ? "Complete" : "In progress"}`))))
+        : el("p", {}, "Your first practice can be today."),
+    ));
     if (state.parent) {
       app.append(
         el(
@@ -1313,54 +921,20 @@ function table(head, rows) {
   );
 }
 function drawChart(charts) {
-  const ns = "http://www.w3.org/2000/svg",
-    n = (tag, attrs, text) => {
-      const e = document.createElementNS(ns, tag);
-      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-      if (text) e.textContent = text;
-      return e;
-    };
-  const width = 700,
-    height = 90 + charts.length * 46,
-    svg = n("svg", {
-      viewBox: `0 0 ${width} ${height}`,
-      role: "img",
-      "aria-label": "First-try spelling accuracy by list",
-      class: "chart",
-    });
-  svg.append(n("title", {}, "First-try spelling accuracy"));
-  charts.forEach((c, i) => {
-    const y = 25 + i * 46;
-    svg.append(
-      n(
-        "text",
-        { x: 0, y: y + 17 },
-        c.title.length > 20 ? c.title.slice(0, 18) + "…" : c.title,
-      ),
-      n("rect", { x: 200, y, width: 420, height: 26, rx: 8, fill: "#e0eee2" }),
-      n("rect", {
-        x: 200,
-        y,
-        width: (420 * c.accuracy) / 100,
-        height: 26,
-        rx: 8,
-        fill: "#315d51",
-      }),
-      n("text", { x: 630, y: y + 18 }, c.total ? c.accuracy + "%" : "—"),
-    );
-  });
-  return svg;
+  // Bar length is the exact accuracy; the figure is set beside it for reading.
+  // CSSOM width, not a style attribute: the CSP has no 'unsafe-inline'.
+  const fill = (pct) => { const n = el("span", { class: "fill" }); n.style.width = pct + "%"; return n; };
+  return el("div", { class: "bars", role: "img", "aria-label": "First-try spelling accuracy by list" },
+    charts.map((c) => el("div", { class: "bar", "aria-hidden": "true" },
+      el("span", { class: "label" }, c.title),
+      el("span", { class: "track" }, fill(c.total ? c.accuracy : 0)),
+      el("span", { class: "value" }, c.total ? c.accuracy + "%" : "—"))));
 }
 function modal(title, content) {
   const d = el(
     "dialog",
-    {},
-    el(
-      "div",
-      { class: "row spread" },
-      el("h2", {}, title),
-      button("✕", () => d.close(), "quiet"),
-    ),
+    { "aria-label": title },
+    el("div", { class: "row spread" }, el("h2", {}, title), button(icon("close", { label: "Close" }), () => d.close(), "quiet")),
     content,
   );
   document.body.append(d);
@@ -1557,35 +1131,27 @@ function parentHome(inShell = false) {
     viewVersion++;
     stopSpeaking();
     app.replaceChildren();
+    document.body.classList.remove("practicing");
+    app.dataset.tone = "parent";
     header();
-    app.append(
-      el("h1", {}, "Family settings"),
-      button("Back", render, "secondary"),
-    );
+    app.append(el("div", { class: "band" }, el("div", { class: "band-head" }, el("h1", {}, "Family settings"), button("Back", render, "secondary small"))));
   }
-  app.append(
-    el(
-      "section",
-      { class: "card" },
-      el("h2", {}, "Family profiles"),
-      el(
-        "div",
-        { class: "row" },
-        state.kids.map((k) => el("div", { class: "profile-controls" },
-          el("strong", {}, k.name),
-          button("Rename / edit", () => editKid(k), "secondary small"),
-          button("Remove", async () => {
-            if (!confirm(`Remove ${k.name} and all their lists, verses, and practice history? This cannot be undone.`)) return;
-            await api("/api/admin/remove-kid", { id: k.id });
-            await reload();
-            render();
-            toast("Profile removed.");
-          }, "danger small"),
-        )),
-        button("+ Add kid", () => editKid()),
-      ),
-    ),
-  );
+  const section = (title, ...children) => el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, title)), ...children);
+  app.append(section("Family profiles",
+    el("div", {}, state.kids.map((k) => el("div", { class: "profile-controls" },
+      el("strong", {}, k.name),
+      button("Rename / edit", () => editKid(k), "secondary small"),
+      button("Remove", async () => {
+        if (!confirm(`Remove ${k.name} and all their lists, verses, and practice history? This cannot be undone.`)) return;
+        await api("/api/admin/remove-kid", { id: k.id });
+        await reload();
+        render();
+        toast("Profile removed.");
+      }, "danger small"),
+    ))),
+    el("div", { class: "form-actions" }, button("+ Add kid", () => editKid())),
+  ));
+  app.append(deviceControls());
   app.append(familyControls());
   const voice = el("select", { id: "voice" },
     el("option", {value: "cloud", selected: cloudVoice()}, "Cloud voice (recommended)"),
@@ -1599,10 +1165,7 @@ function parentHome(inShell = false) {
       onsubmit: async (e) => {
         e.preventDefault();
         try {
-          await api("/api/admin/settings", {
-            voice: voice.value,
-            speed: Number(speed.value),
-          });
+          await api("/api/admin/settings", { voice: voice.value, speed: Number(speed.value) });
           stopSpeaking();
           cooldown = 0;
           await reload();
@@ -1614,75 +1177,53 @@ function parentHome(inShell = false) {
     },
     field("Reading voice", voice),
     field("Speech speed · 0.5 slow to 1.5 fast", speed),
-    el(
-      "p",
-      { class: "muted" },
-      "Cloud voice sends only the text being read to Cloudflare for speech. If it takes more than 4 seconds or is unavailable, this device’s English voice takes over. Device voice uses your browser and operating system.",
-    ),
-    el(
-      "div",
-      { class: "row" },
+    el("p", { class: "muted field-hint" }, "Cloud voice sends only the text being read to Cloudflare for speech. If it takes more than 4 seconds or is unavailable, this device’s English voice takes over. Device voice uses your browser and operating system."),
+    el("div", { class: "row" },
       el("button", { type: "submit" }, "Save voice settings"),
-      button(
-        "Test voice",
-        () => say("A little practice helps us grow."),
-        "secondary",
-      ),
+      button([icon("speaker"), "Test voice"], () => say("A little practice helps us grow."), "secondary"),
     ),
   );
-  app.append(
-    el("section", { class: "card" }, el("h2", {}, "Listen your way"), form),
-  );
-  const upload = input("backup-file", "", {
-    type: "file",
-    accept: ".json,application/json",
-  });
-  app.append(
-    el(
-      "section",
-      { class: "card" },
-      el("h2", {}, "Backups"),
-      el(
-        "p",
-        {},
-        "Export includes all profiles, lists, verses, settings, sessions, and attempts. JSON can restore this app; CSV is a spreadsheet-friendly table with a table-name column and shared fields.",
-      ),
-      el(
-        "div",
-        { class: "row" },
-        button("Export JSON", () => downloadBackup("json"), "secondary"),
-        button("Export CSV", () => downloadBackup("csv"), "secondary"),
-      ),
-      field("Restore a JSON backup", upload),
-      el(
-        "p",
-        { class: "notice" },
-        `Import replaces all current family data. Export a backup first. Files are limited to ${state.settings.serverTts === false ? 2 : 32} MB.`,
-      ),
-      button(
-        "Import backup",
-        async () => {
-          const f = upload.files[0];
-          if (!f) throw Error("Choose a JSON backup first.");
-          const limitMB = state.settings.serverTts === false ? 2 : 32;
-          if (f.size > limitMB * 1024 * 1024)
-            throw Error(`Backup is larger than ${limitMB} MB.`);
-          let b;
-          try {
-            b = JSON.parse(await f.text());
-          } catch {
-            throw Error("That file is not valid JSON.");
-          }
-          if (!confirm("Replace all current family data with this backup?"))
-            return;
-          await api("/api/admin/import", b);
-          await reload();
-          render();
-          toast("Backup restored.");
-        },
-        "danger",
-      ),
+  app.append(section("Listen your way", form));
+  const upload = input("backup-file", "", { type: "file", accept: ".json,application/json" });
+  app.append(section("Backups",
+    el("p", {}, "Export includes all profiles, lists, verses, settings, sessions, and attempts. JSON can restore this app; CSV is a spreadsheet-friendly table with a table-name column and shared fields."),
+    el("div", { class: "row" },
+      button("Export JSON", () => downloadBackup("json"), "secondary"),
+      button("Export CSV", () => downloadBackup("csv"), "secondary"),
     ),
+    field("Restore a JSON backup", upload),
+    el("p", { class: "notice" }, `Import replaces all current family data. Export a backup first. Files are limited to ${state.settings.serverTts === false ? 2 : 32} MB.`),
+    button("Import backup", async () => {
+      const f = upload.files[0];
+      if (!f) throw Error("Choose a JSON backup first.");
+      const limitMB = state.settings.serverTts === false ? 2 : 32;
+      if (f.size > limitMB * 1024 * 1024) throw Error(`Backup is larger than ${limitMB} MB.`);
+      let b;
+      try { b = JSON.parse(await f.text()); } catch { throw Error("That file is not valid JSON."); }
+      if (!confirm("Replace all current family data with this backup?")) return;
+      await api("/api/admin/import", b);
+      await reload();
+      render();
+      toast("Backup restored.");
+    }, "danger"),
+  ));
+}
+// Per-device feedback settings live in this browser only, never on the server.
+function deviceControls() {
+  const s = deviceSettings();
+  const toggle = (id, label, hint, key, disabled = false) => {
+    const box = input(id, "", { type: "checkbox", checked: s[key] && !disabled, disabled });
+    box.addEventListener("change", () => { setDeviceSettings({ [key]: box.checked }); if (key === "keySounds" && box.checked) previewSound(); });
+    return el("div", { class: "switch" }, el("label", { for: id }, label, el("small", {}, hint)), box);
+  };
+  const keyboard = el("select", { id: "device-keyboard" },
+    [["auto", "Automatic (touch screens)"], ["on", "Always show"], ["off", "Never show"]].map(([v, t]) => el("option", { value: v, selected: s.keyboard === v }, t)));
+  keyboard.addEventListener("change", () => setDeviceSettings({ keyboard: keyboard.value }));
+  return el("div", { class: "section" },
+    el("div", { class: "section-title" }, el("h2", {}, "This device")),
+    toggle("device-sounds", "Key sounds", "A soft tick for keys and buttons. Plays only after a tap or key press.", "keySounds"),
+    toggle("device-haptics", "Haptics", supportsHaptics() ? "A light tap on supported phones. On iPhone, needs iOS 18 and System Haptics on." : "This device can’t vibrate.", "haptics", !supportsHaptics()),
+    el("div", { class: "switch" }, el("label", { for: "device-keyboard" }, "On-screen keyboard", el("small", {}, "Big letter keys for spelling and verses. Automatic shows them on phones and tablets.")), keyboard),
   );
 }
 async function downloadBackup(format) {
@@ -1702,13 +1243,14 @@ function clearView() {
   viewVersion++;
   stopSpeaking();
   app.replaceChildren();
+  document.body.classList.remove("practicing");
   $("header-actions").replaceChildren();
   $("voice-status").textContent = "";
 }
 function familyControls() {
-  return el("section", { class: "card" },
-    el("h2", {}, "Your family space"),
-    el("p", {}, state.family?.name || "Family Practice"),
+  return el("div", { class: "section" },
+    el("div", { class: "section-title" }, el("h2", {}, "Your family space"), el("span", { class: "muted" }, state.family?.name || "Family Practice")),
+    el("p", {}, "Your family code opens practice on another device. The parent PIN protects settings and backups. Keep both safe; there is no email-based recovery."),
     el("div", { class: "row" },
       button("Save your family code", codeCard, "secondary"),
       button("Add sample practice", async () => {
@@ -1722,7 +1264,6 @@ function familyControls() {
       }, "secondary"),
       button("Change parent PIN", changePin, "secondary"),
     ),
-    el("p", { class: "muted" }, "Your family code opens practice on another device. The parent PIN protects settings and backups. Keep both safe; there is no email-based recovery."),
     el("details", {}, el("summary", {}, "Delete this family"),
       el("p", {}, "Permanently remove every profile and all practice data. Export a backup first. This cannot be undone."),
       button("Delete family…", deleteFamily, "danger")),
@@ -1765,15 +1306,16 @@ function deleteFamily() {
 function codeCard() {
   clearView();
   header();
+  app.dataset.tone = "parent";
   const joinURL = location.origin + "/f/" + encodeURIComponent(familyCode);
-  app.append(el("section", { class: "card print-sheet code-card" },
-    el("span", { class: "badge" }, "Keep this card somewhere private"),
+  app.append(el("section", { class: "print-sheet code-card section" },
     el("h1", {}, state.family?.name || "Your family practice space"),
-    el("p", {}, "Family code"), el("strong", { class: "family-code" }, familyCode),
     el("p", { class: "notice" }, "Save this code — it’s the only way back in. Write it down or copy it. We can’t recover it."),
+    el("p", { class: "muted" }, "Family code"), el("strong", { class: "family-code" }, familyCode),
     el("p", { class: "join-url" }, joinURL),
     el("p", {}, "Open Family Practice on another device and enter this code, or use the link above. Anyone with the code can view and use your family’s practice. Share it only with trusted family members."),
     el("p", {}, "Your parent PIN is separate. It is not printed on this card. Keep the PIN safe: there is no email-based recovery."),
+    el("p", { class: "muted no-print" }, "Keep this card somewhere private."),
     el("div", { class: "row" },
       button("Copy code", async () => { await navigator.clipboard.writeText(familyCode); toast("Family code copied."); }),
       button("Copy join link", async () => { await navigator.clipboard.writeText(joinURL); toast("Join link copied. Share privately."); }, "secondary"),
@@ -1791,21 +1333,46 @@ async function openFamily(code) {
   history.replaceState({}, "", "/");
   render();
 }
+// The Learn mechanism, shown rather than described: letters fade a few at a time.
+function learnDemo() {
+  const row = (label, word, hidden, fades = []) => el("div", {}, el("b", {}, label), el("span", { class: "cue" },
+    [...word].map((c, i) => {
+      const span = el("span", { class: hidden.includes(i) ? "blank" : fades.includes(i) ? "fades" : "" }, hidden.includes(i) ? " " : c);
+      if (fades.includes(i)) span.style.setProperty("--i", fades.indexOf(i));
+      return span;
+    })));
+  return el("figure", { class: "demo", "aria-label": "Example: in Learn mode, letters of “beautiful” fade until you spell it from memory." },
+    el("div", { class: "demo-steps", "aria-hidden": "true" },
+      row("Copy", "beautiful", []),
+      row("Fade", "beautiful", [], [3, 7]),
+      row("Recall", "beautiful", [1, 2, 3, 4, 5, 6, 7, 8])),
+    el("small", {}, "Learn mode: hear it, copy it, then type it with fewer letters showing."));
+}
 function landing(prefill = "", message = "") {
   clearView();
+  app.dataset.tone = "spelling";
   const resumeCode = familyCode;
-  app.append(el("section", { class: "hero" },
-    el("span", { class: "badge" }, "A little practice, a lot of growth"),
-    el("h1", {}, "A small daily habit. A family that grows."),
-    el("p", {}, "Spelling tests read aloud with helpful sentences, Bible verse memorization, and progress worth celebrating. Create your family’s own space or join one you already use."),
-    el("p", { class: "muted" }, "Data is stored by family code. No email or accounts. Use first names or nicknames only. Save your family code and parent PIN to come back."),
+  app.append(el("div", { class: "band hero" },
+    el("div", { class: "hero-grid" },
+      el("div", {},
+        el("h1", {}, "A small daily habit. A family that grows."),
+        el("p", { class: "hero-lede" }, "Spelling tests read aloud with helpful sentences, Bible verses learned a few words at a time, and progress worth celebrating."),
+        el("div", { class: "row" },
+          button("Create a family space", () => { name.focus(); name.scrollIntoView({behavior:"smooth",block:"center"}); }),
+          button("I have a family code", () => { code.focus(); code.scrollIntoView({behavior:"smooth",block:"center"}); }, "secondary")),
+      ),
+      learnDemo(),
+    ),
   ));
-  app.append(el("div", { class: "row" },
-    button("Create a family space", () => { name.focus(); name.scrollIntoView({behavior:"smooth",block:"center"}); }),
-    button("I have a family code", () => { code.focus(); code.scrollIntoView({behavior:"smooth",block:"center"}); }, "secondary")));
   if (message) app.append(el("p", { role: "alert", class: "notice" }, message));
-  if (resumeCode && !prefill) app.append(button("Return to saved family", () => openFamily(resumeCode), "secondary"));
-  const name = input("family-name", "", { maxlength: 80, autocomplete: "off", placeholder: "Our practice garden" });
+  if (resumeCode && !prefill) app.append(el("div", { class: "row section" }, button("Return to saved family", () => openFamily(resumeCode), "secondary")));
+  app.append(el("div", { class: "offer" },
+    el("div", {}, el("strong", {}, "Spelling, read aloud"), el("span", {}, "Word, sentence, word. One retry, then the letters spelled out.")),
+    el("div", {}, el("strong", {}, "Bible verses"), el("span", {}, "Paste your family’s wording. Blanks, first letters, then from memory.")),
+    el("div", {}, el("strong", {}, "Progress for parents"), el("span", {}, "First-try accuracy, tricky words, and verse stars.")),
+    el("div", {}, el("strong", {}, "No accounts"), el("span", {}, "No email, ads, or tracking. First names only. A family code is your key.")),
+  ));
+  const name = input("family-name", "", { maxlength: 80, autocomplete: "off", placeholder: "The Hill family" });
   const pin = input("create-pin", "", { type: "password", required: true, minlength: 4, maxlength: 8, pattern: "[0-9]{4,8}", inputmode: "numeric", autocomplete: "new-password" });
   const repeat = input("create-pin-repeat", "", { type: "password", required: true, autocomplete: "new-password" });
   const createError = el("p", { role: "alert" });
@@ -1826,7 +1393,7 @@ function landing(prefill = "", message = "") {
     } catch (err) { createError.textContent = err.message; }
     finally { createButton.disabled = false; }
   } }, field("Family space name (optional)", name), field("Parent PIN (4–8 digits)", pin), field("Repeat parent PIN", repeat),
-    el("p", { class: "muted" }, "Use a PIN you can remember. There is no email-based PIN recovery. Start with an empty space and add only what you need."), createError, createButton);
+    el("p", { class: "muted field-hint" }, "Pick a PIN you’ll remember: there’s no email-based PIN recovery. You start with an empty space and add only what you need."), createError, createButton);
   const code = input("join-code", prefill, { required: true, maxlength: 128, autocomplete: "off", autocapitalize: "none", spellcheck: "false" });
   const joinError = el("p", { role: "alert" });
   const joinButton = el("button", { type: "submit" }, "Join family");
@@ -1838,24 +1405,27 @@ function landing(prefill = "", message = "") {
     catch (err) { joinError.textContent = err.message; }
     finally { joinButton.disabled = false; }
   } }, field("Family code", code),
-    el("p", { class: "notice" }, prefill ? "This link contains a family code. Join only if a trusted family member shared it with you. Joining saves this family on this browser and replaces its previously saved family." : "Ask a parent for your family’s code. Joining remembers this family on this browser. Use a trusted device."), joinError, joinButton);
-  app.append(el("div", { class: "grid onboarding" },
-    el("section", { class: "card" }, el("h2", {}, "Start your family"), create),
-    el("section", { class: "card" }, el("h2", {}, "Already have a code?"), join)));
+    el("p", { class: prefill ? "notice" : "muted field-hint" }, prefill ? "This link contains a family code. Join only if a trusted family member shared it with you. Joining saves this family on this browser and replaces its previously saved family." : "Ask a parent for your family’s code. Joining remembers this family on this browser. Use a trusted device."), joinError, joinButton);
+  app.append(el("div", { class: "onboarding" },
+    el("section", { class: "section" }, el("h2", {}, "Start your family"), create),
+    el("section", { class: "section" }, el("h2", {}, "Already have a code?"), join)));
 }
 function privacy() {
   clearView();
-  app.append(el("section", { class: "card" },
+  app.dataset.tone = "parent";
+  app.append(el("section", { class: "section prose" },
     el("h1", {}, "Privacy & your family’s data"),
     el("p", {}, "Family Practice stores the profiles, spelling lists, Bible verses, practice answers, progress, and voice settings your family enters. Use first names or nicknames, not full names, school names, addresses, or other sensitive details."),
     el("h2", {}, "Your code is a key"),
     el("p", {}, "No tracking, no analytics, and no ads. You can delete your family anytime. Anyone with your family code can open your family’s practice and view its profiles and progress. It is not a public username. Share the code and join link privately with trusted family members only. Your parent PIN protects management actions, backups, and deletion; it does not hide practice from someone who knows your code."),
     el("h2", {}, "On this device"),
-    el("p", {}, "This browser remembers your family code in local storage. Parent mode uses a cookie after you enter your PIN. Lock Parent mode when you finish on a shared device. Forgetting a family here removes its saved code, not its server data."),
+    el("p", {}, "This browser remembers your family code in local storage. Parent mode uses a cookie after you enter your PIN. Lock Parent mode when you finish on a shared device. Forgetting a family here removes its saved code, not its server data. Key sound, haptics, and on-screen keyboard choices are saved only in this browser."),
     el("h2", {}, "Speech & hosting"),
     el("p", {}, "Cloud voice is the default. Text being read aloud (spelling words, practice sentences, and Bible verses) is sent to Cloudflare Workers AI to generate speech; family profile names and typed answers are not included in speech requests. Already-heard audio is cached in bounded browser memory for replay, and Cloudflare caches generated clips for reuse. The app shell is saved on this device for faster loading; family data and answers are not saved in the offline cache. You can choose Device voice in family settings; it is also the automatic fallback when cloud speech is unavailable. Device voice availability and whether speech is processed locally depend on your browser and operating system. Practice data is stored with the app’s Cloudflare hosting services; normal hosting request logs may include technical information such as IP addresses."),
     el("h2", {}, "You stay in control"),
     el("p", {}, "In Parent mode you can export a backup, remove a child and their practice history, or permanently delete the whole family. Keep backups private. No email is collected for account recovery, so keep both your code and PIN safe."),
+    el("h2", {}, "Credits"),
+    el("p", {}, "Text face: Practice Reader, a Latin subset of Andika by SIL International. Headings: Barlow Condensed by The Barlow Project Authors. Both use the SIL Open Font License 1.1. Key sound: “click_002” from Kenney’s Interface Sounds (CC0). All are served from this site; nothing loads from a third party."),
     el("div", { class: "row" }, button("Back", () => { history.replaceState({}, "", "/"); if (familyCode && state.family) render(); else landing(); }, "secondary"),
       familyCode ? button("Forget family on this device", async () => {
         if (!confirm("Forget the saved family code on this device? Keep a copy first. Your family’s server data will not be deleted.")) return;

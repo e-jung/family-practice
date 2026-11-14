@@ -8,7 +8,7 @@ if(!['localhost','127.0.0.1','[::1]'].includes(new URL(origin).hostname))throw E
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || undefined,args:['--no-sandbox']});
 // Five MPEG audio frames, generated from 60 ms of mono silence (real decoder input).
 const tinyMP3=Buffer.from('//NExAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExFMAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMu//NExKYAAANIAAAAADEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NExKwAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NExKwAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV','base64');
-const errors=[],external=[];let journeys=0,cloudRequests=0,fallbackRequests=0,learnSteps=0;
+const errors=[],external=[];let journeys=0,cloudRequests=0,fallbackRequests=0,learnSteps=0,keyTaps=0;
 async function noOverflow(page,label) {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${label}: no horizontal overflow`);
 }
@@ -40,6 +40,14 @@ async function checkInstallability(page) {
   });
   assert.equal(new URL(registration.scope).origin,origin,'service worker scope is first-party');
   assert.equal(new URL(registration.scriptURL).origin,origin,'service worker script is first-party');
+}
+// Types with the on-screen keyboard and checks the answer field received each key.
+async function oskType(page,field,text) {
+  const keyboard=page.locator('[data-keyboard]');
+  assert.equal(await keyboard.isVisible(),true,'touch practice shows the on-screen keyboard');
+  assert.equal(await field.getAttribute('inputmode'),'none','touch practice suppresses the OS keyboard');
+  for(const ch of text) { await keyboard.getByRole('button',{name:ch,exact:true}).tap(); keyTaps++; }
+  assert.equal(await field.inputValue(),text,'on-screen keys typed into the answer field');
 }
 async function learnList(page) {
   await page.getByRole('button',{name:'Spelling',exact:true}).click();
@@ -86,7 +94,7 @@ async function learnList(page) {
 }
 try {
   for(const width of [1440,390]) {
-    const context=await browser.newContext({viewport:{width,height:width===390?844:1000}});
+    const context=await browser.newContext({viewport:{width,height:width===390?844:1000},...(width===390?{isMobile:true,hasTouch:true}:{})});
     const page=await context.newPage();
     page.setDefaultTimeout(10000);
     page.on('pageerror',e=>errors.push(e.message));
@@ -122,7 +130,7 @@ try {
     await page.getByRole('button',{name:'+ Add your first kid',exact:true}).click();
     await page.getByLabel('First name or nickname',{exact:true}).fill('Alex');
     await page.getByRole('button',{name:'Save',exact:true}).click();
-    await page.getByRole('button',{name:/🌻 Alex/}).click();
+    await page.getByRole('button',{name:/Alex/}).click();
     await page.getByRole('button',{name:'+ Add spelling list',exact:true}).click();
     await page.getByLabel('Week title').fill('Browser week');
     await page.getByLabel('One word per line').fill('friend | My friend is kind.\nlight | Turn on the light.\nkind | Be kind to others.');
@@ -131,13 +139,15 @@ try {
     await page.getByRole('button',{name:'Test',exact:true}).click();
     await page.getByLabel('Shuffle the words').uncheck();await page.getByRole('button',{name:'Let’s begin'}).click();
     if(width===1440) {
+      assert.equal(await page.locator('[data-keyboard]').count(),0,'desktop keeps the physical keyboard');
+      assert.notEqual(await page.getByLabel('Type the spelling word').getAttribute('inputmode'),'none','desktop allows the native keyboard');
       await page.waitForFunction(()=>window.testAudioEnded>=3);
       assert.equal(await page.evaluate(()=>window.testPitchPreserved),true,'playback preserves speech pitch');
       assert.deepEqual(await page.evaluate(()=>window.testSpoken),[],'real MP3 cloud playback does not use fallback');
       for(const text of ['friend','My friend is kind.','light','Turn on the light.'])assert.ok(requests.includes(text),'prefetched '+text);
       assert.equal(requests.includes('kind'),false,'only the first two words prefetch initially');
       const count=requests.length;
-      await page.getByRole('button',{name:'🔊 Say again'}).click();
+      await page.getByRole('button',{name:'Say again'}).click();
       await page.waitForFunction(()=>window.testAudioEnded>=6);
       assert.equal(requests.length,count,'replay reuses blob LRU');
       await page.getByLabel('Type the spelling word').fill('wrong');await page.getByRole('button',{name:'Check word'}).click();
@@ -148,7 +158,10 @@ try {
     } else {
       await page.waitForFunction(()=>window.testSpoken.length>=3);
       await page.getByText('Device voice active · cloud voice temporarily unavailable',{exact:true}).waitFor();
-      await page.getByLabel('Type the spelling word').fill('friend');await page.getByRole('button',{name:'Check word'}).click();
+      await oskType(page,page.getByLabel('Type the spelling word'),'friends');
+      await page.locator('[data-keyboard]').getByRole('button',{name:'Delete'}).tap();
+      assert.equal(await page.getByLabel('Type the spelling word').inputValue(),'friend','on-screen Delete removes one letter');
+      await page.getByRole('button',{name:'Check word'}).tap();
     }
     await page.getByRole('button',{name:'Next word'}).click();
     if(width===1440) {
@@ -160,15 +173,17 @@ try {
     await page.getByRole('button',{name:'Next word'}).click();
     await page.getByLabel('Type the spelling word').fill('kind');await page.getByRole('button',{name:'Check word'}).click();
     await page.getByRole('button',{name:'See my results'}).click();await page.getByText(width===1440?'2 / 3':'3 / 3',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'Back to spelling',exact:true}).click();
     await page.getByRole('button',{name:'Bible Verses',exact:true}).click();
     await page.getByRole('button',{name:'+ Add Bible verse',exact:true}).click();
     await page.getByLabel('Reference (for example Psalm 23:1)').fill('John 11:35');
     await page.getByLabel('Verse text · paste your chosen wording').fill('Jesus wept.');
     await page.getByRole('button',{name:'Save',exact:true}).click();
     await page.getByRole('button',{name:'Practice this verse'}).click();
-    await page.getByRole('button',{name:'Start',exact:true}).nth(3).click();
+    await page.getByRole('button',{name:/From memory/}).click();
     await page.getByLabel('Your verse from memory').fill('Jesus wept!');
     await page.getByRole('button',{name:'Check my work'}).click();await page.getByText('100%',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'Back to modes'}).click();
     await page.getByRole('button',{name:'Progress',exact:true}).click();
     await page.getByRole('heading',{name:'Verse garden'}).waitFor();
     await page.getByRole('img',{name:'First-try spelling accuracy by list'}).waitFor();
@@ -209,6 +224,7 @@ try {
       speechMode='success';
     }
     await learnList(page);
+    await page.getByRole('button',{name:'Back',exact:true}).click();
     if(width===390) {
       await page.setViewportSize({width:360,height:800});
       await noOverflow(page,'360px test setup');
@@ -217,12 +233,14 @@ try {
       await page.setViewportSize({width:390,height:844});
     }
     await page.screenshot({path:`.tools/public-${width}.png`,fullPage:true});
+    assert.equal(await page.locator('[data-keyboard]').count(),0,'keyboard leaves with the practice screen');
+    await page.getByRole('button',{name:'Switch kid',exact:true}).click();
     await page.getByRole('button',{name:'Switch family',exact:true}).click();
     await page.getByRole('heading',{name:'A small daily habit. A family that grows.'}).waitFor();
     assert.equal(await page.evaluate(()=>localStorage.getItem('family-practice-code')),null);
     await page.getByRole('button',{name:'I have a family code'}).click();
     await page.getByLabel('Family code',{exact:true}).fill(code);await page.getByRole('button',{name:'Join family',exact:true}).click();
-    await page.getByRole('button',{name:/🌻 Alex/}).waitFor();
+    await page.getByRole('button',{name:/Alex/}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Lock Parent mode',exact:true}).count(),0,'switch locked parent cookie');
     await page.goto(origin+'/f/'+code);assert.equal(await page.getByLabel('Family code',{exact:true}).inputValue(),code);
     await page.goto(origin+'/privacy');await page.getByRole('heading',{name:'Privacy & your family’s data'}).waitFor();
@@ -234,6 +252,47 @@ try {
     },{code});assert.equal(deleted,true);
     journeys++;await context.close();
   }
+  // Key sounds: nothing loads or plays before a gesture; a tap then loads the CC0 tick.
+  {
+    const context=await browser.newContext({viewport:{width:1280,height:800}});
+    const page=await context.newPage();
+    page.on('pageerror',e=>errors.push(e.message));
+    const samples=[];page.on('request',r=>{if(r.url().includes('/audio/'))samples.push(r.url());});
+    await page.addInitScript(()=>{
+      localStorage.setItem('family-practice-device',JSON.stringify({keySounds:true,haptics:false,keyboard:'auto'}));
+      window.testContexts=0;const Real=window.AudioContext;
+      window.AudioContext=class extends Real{constructor(...a){super(...a);window.testContexts++;}};
+    });
+    await page.goto(origin);await page.getByRole('button',{name:'I have a family code'}).waitFor();
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(()=>window.testContexts),0,'no audio context before a user gesture');
+    assert.equal(samples.length,0,'no key sound fetched before a user gesture');
+    await page.getByRole('button',{name:'I have a family code'}).click();
+    await page.waitForFunction(()=>window.testContexts>=1);
+    await page.waitForTimeout(300);
+    assert.ok(samples.some(u=>u.endsWith('/audio/interface-click-002.mp3')),'first gesture loads the key sample');
+    await context.close();
+  }
+  // iOS haptics: each button gets a native switch overlay; one tap clicks the button exactly once.
+  {
+    const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,
+      userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'});
+    const page=await context.newPage();
+    page.on('pageerror',e=>errors.push(e.message));
+    await page.addInitScript(()=>{delete Navigator.prototype.vibrate;localStorage.setItem('family-practice-device',JSON.stringify({keySounds:false,haptics:true,keyboard:'auto'}));});
+    await page.goto(origin);
+    const target=page.getByRole('button',{name:'I have a family code'});
+    await target.waitFor();
+    await page.waitForFunction(()=>document.querySelectorAll('.haptic-overlay').length>=document.querySelectorAll('button').length);
+    assert.equal(await page.locator('.haptic-overlay[switch][aria-hidden="true"]').count(),await page.locator('button').count(),'every button has one hidden native switch');
+    await target.evaluate(b=>{window.testClicks=0;b.addEventListener('click',()=>window.testClicks++);});
+    const box=await target.boundingBox();
+    await page.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(()=>window.testClicks),1,'overlay tap activates its button exactly once');
+    assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('haptic-overlay')),false,'focus never rests on the hidden switch');
+    await context.close();
+  }
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  console.log(`PASS: ${journeys} complete desktop/mobile journeys, onboarding → kid/list → spelling → verse → progress → Learn → switch/join/privacy; manifest parsed, icons fetched, actual service worker activated; zero console/page errors or third-party requests. Cloud MP3 decoded/played; 503 and 4-second timeout fell back to instrumented device speech; device choice, blob reuse, initial two + one-ahead word/sentence prefetch, navigation cancellation and single-request spelling verified. Learn stages=${learnSteps}; Cloud requests=${cloudRequests}, mocked 503 requests=${fallbackRequests}. Speech not listened to by a human.`);
+  console.log(`PASS: ${journeys} complete desktop/mobile journeys, onboarding → kid/list → spelling → verse → progress → Learn → switch/join/privacy; manifest parsed, icons fetched, actual service worker activated; zero console/page errors or third-party requests. Cloud MP3 decoded/played; 503 and 4-second timeout fell back to instrumented device speech; device choice, blob reuse, initial two + one-ahead word/sentence prefetch, navigation cancellation and single-request spelling verified. Learn stages=${learnSteps}; on-screen key taps=${keyTaps}; key sound waits for a gesture; iOS switch overlay clicks once; Cloud requests=${cloudRequests}, mocked 503 requests=${fallbackRequests}. Speech not listened to by a human.`);
 } finally {await browser.close();}

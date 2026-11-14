@@ -67,3 +67,14 @@ test('worker serves service worker with explicit no-store and first-party CSP', 
   assert.match(response.headers.get('Content-Security-Policy'), /worker-src 'self'; manifest-src 'self'/);
   assert.equal(response.headers.get('Service-Worker-Allowed'), '/');
 });
+test('shell caches every self-hosted font, sound, and module, each with its license', async () => {
+  const source = (await asset('sw.js')).toString();
+  const shell = JSON.parse(source.match(/const SHELL = (\[[^\]]+\])/)[1].replaceAll("'", '"'));
+  for (const path of shell.filter(p => p !== '/')) assert.ok((await asset(path.slice(1))).length > 0, `${path} exists`);
+  for (const path of ['/feedback.js', '/keyboard.js', '/icons.js', '/fonts/practice-reader-regular.woff2', '/fonts/barlow-condensed-bold.woff2', '/audio/interface-click-002.mp3']) assert.ok(shell.includes(path), `${path} is in the shell`);
+  const woff2 = await asset('fonts/practice-reader-regular.woff2');
+  assert.equal(woff2.subarray(0, 4).toString(), 'wOF2');
+  for (const license of ['practice-reader-OFL.txt', 'barlow-condensed-OFL.txt', 'kenney-CC0.txt', 'README.txt']) assert.ok((await asset('licenses/' + license)).length > 200);
+  const css = (await asset('style.css')).toString();
+  assert.doesNotMatch(css, /url\(\s*["']?https?:/, 'fonts are first-party');
+});

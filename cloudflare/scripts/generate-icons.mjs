@@ -17,12 +17,11 @@ function chunk(type, bytes) {
 for (const size of [180, 192, 512]) {
   const pixels = Buffer.alloc((size * 3 + 1) * size);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    // Sun and open book, kept within the maskable central safe circle.
+    // A seed packet (white stock, marigold band) on cobalt, inside the maskable safe circle.
     const u = x / size, v = y / size;
-    const sun = (u - .5) ** 2 + (v - .34) ** 2 < .075 ** 2;
-    const book = u > .26 && u < .74 && v > .47 + Math.abs(u - .5) * .25 && v < .68 + Math.abs(u - .5) * .25;
-    const spine = Math.abs(u - .5) < .009 && v > .47 && v < .69;
-    const color = sun ? [232, 182, 77] : book && !spine ? [251, 247, 238] : [49, 93, 81];
+    const packet = u > .33 && u < .67 && v > .23 && v < .77;
+    const band = packet && v > .6;
+    const color = band ? [242, 179, 61] : packet ? [255, 255, 255] : [36, 70, 168];
     const offset = y * (size * 3 + 1) + 1 + x * 3;
     for (let c = 0; c < 3; c++) pixels[offset + c] = color[c];
   }

@@ -138,6 +138,7 @@ try {
     await blank.waitFor();
     await typeInto(page,blank,'wo');
     await shot(page,'08-verse-blanks',label);
+    await page.getByRole('button',{name:'Back to modes'}).click();
     await page.getByRole('button',{name:'Progress',exact:true}).click();
     await page.getByRole('img',{name:'First-try spelling accuracy by list'}).waitFor();
     await shot(page,'09-progress',label,true);
