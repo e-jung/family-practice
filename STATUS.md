@@ -42,9 +42,9 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
 6. Push `main`, add a changelog line below, and update "Live" if anything structural changed.
 
-## Pending branch: optional parent sign-in and email
+## Optional parent sign-in and email (deployed, dormant)
 
-Prepared on `signin`, **not deployed**. Optional parent Google/emailed-code sign-in links family spaces without removing Family Code/PIN-only access. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders; child accounts remain prohibited. Unlinked lost codes cannot be recovered. Email helpers use one provider request with no automatic retries; AccountStore owns durable delivery claims and quotas. Provider identity/email are additional optional data processors, not analytics.
+Deployed 2026-11-14 (`b459cab`) but **dormant**: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and `RESEND_API_KEY` are not set, so `/api/config` reports `google:false, email:false` and the UI hides sign-in. Turning it on needs the operator setup below. Optional parent Google/emailed-code sign-in links family spaces without removing Family Code/PIN-only access. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders; child accounts remain prohibited. Unlinked lost codes cannot be recovered. Email helpers use one provider request with no automatic retries; AccountStore owns durable delivery claims and quotas. Provider identity/email are additional optional data processors, not analytics.
 
 Deployment preparation adds `ACCOUNTS` → `AccountStore`, additive migration `v4` (v1–v3 preserved), `accounts.js` and `emails.js` modules, and hourly cron (`0 * * * *`). Live section above still describes production, not this branch. Google OAuth and Resend deliveries require operator setup and remain unverified against real providers.
 
@@ -94,7 +94,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - **2026-11-13: Parents paste verse text; no Bible API.** *Why:* translation licensing. Samples use public-domain KJV.
 - **2026-11-13: Zero npm runtime dependencies, vanilla JS, no build step.** *Why:* small, auditable, easy for agents and self-hosters.
 
-## Changelog — pending
+## Changelog — shipped 2026-11-14 in `b459cab` (shell v11; migration v4 + hourly cron applied; prod smoke 53 requests / 64 assertions; retired `fp_` links return 401 with guidance)
 
 - `signin` review fixes, shell v10: removed native-append null text; split identity settings into Your sign-in / Parents linked to this family / Email reminders; equal-width action rows; recovery retained on landing and added to Family with hyphen-only code breaks. Parent tools now have Kids · Lists · Verses · Family plus a collapsible More group. Toasts reserve bottom safe-area space and keep Save clear. All four email types share a cobalt, system-font, inline-styled table layout; weekly summaries now include actual practice days. Eight HTML/text golden fixtures cover weekly, class update, review nudge and sign-in code emails.
 
