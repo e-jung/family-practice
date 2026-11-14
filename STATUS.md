@@ -10,7 +10,7 @@ Last updated: 2026-11-14
 
 - Hosted instance: https://spelling.jesklabs.com (listed as "spelling" on jesklabs.com; the in-app name is "Family Practice").
 - Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`, `ShareStore`, `AccountStore`), and Workers AI for speech. Migrations deployed: `v1`–`v4`; hourly notification cron configured.
-- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v11` (pending shared Accounts shell: `v12`).
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v12`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
 - The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
 
@@ -21,11 +21,11 @@ Last updated: 2026-11-14
 | `SESSION_SECRET` | Worker secret | Signs parent cookies. **Keep stable**; rotating it logs out all parents. |
 | `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
 | `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
-| `ACCOUNTS_SVC` | Optional Worker service binding (pending cutover) | Shared Accounts owns Google/email/SSO; stable subject keys app-local links. |
-| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment (pending cutover) | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0`. Enable only with shared Accounts configured. |
-| `RESEND_API_KEY` | Optional Worker secret (pending branch) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
-| `APP_ORIGIN` | Worker var (pending branch) | Canonical HTTPS notification-link/callback origin; self-hosters must override the hosted default. |
-| `EMAIL_FROM` | Worker var (pending branch) | Default `Family Practice <spelling@jesklabs.com>`; self-hosters must configure their verified sender. |
+| `ACCOUNTS_SVC` | Worker service binding → `jesklabs-accounts` / `SpellingClient` | Shared Accounts owns Google/email/SSO; stable subject keys app-local links. |
+| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0` (both `0` in production). Enable only once shared Accounts can send Family Practice mail / complete Google. |
+| `RESEND_API_KEY` | Optional Worker secret (unset in production) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
+| `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin; self-hosters must override the hosted default. |
+| `EMAIL_FROM` | Worker var | Default `Family Practice <spelling@jesklabs.com>`; self-hosters must configure their verified sender. |
 | `TTS_SPEAKER` | Worker var (optional) | Aura-1 speaker; default `asteria`. |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | Deployer environment only | Token needs Workers Scripts edit (+ zone Workers Routes/DNS for the custom domain). Never a Worker binding. |
 | Custom domain | Workers Custom Domains | Attached once; `deploy.mjs` does not manage routes. `workers_dev = false`. |
@@ -43,22 +43,18 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
 6. Push `main`, add a changelog line below, and update "Live" if anything structural changed.
 
-## Optional parent sign-in and email (deployed, dormant)
+## Optional Jesklabs sign-in (deployed, off)
 
-Deployed 2026-11-14 (`b459cab`) but **dormant**: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and `RESEND_API_KEY` are not set, so `/api/config` reports `google:false, email:false` and the UI hides sign-in. Do not enable the old per-app providers: the pending cutover below replaces that setup with shared Accounts. Optional parent Google/emailed-code sign-in links family spaces without removing Family Code/PIN-only access. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders; child accounts remain prohibited. Unlinked lost codes cannot be recovered. Email helpers use one provider request with no automatic retries; AccountStore owns durable delivery claims and quotas. Provider identity/email are additional optional data processors, not analytics.
+Deployed 2026-11-14 with both `SIGNIN_*` gates `0`: `/api/auth/config` reports `email:false, google:false, sso:false`, every sign-in route returns 404 and the UI hides sign-in. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. No accounts required: Family Code/PIN use is unchanged and child accounts remain prohibited.
 
-Deployment preparation adds `ACCOUNTS` → `AccountStore`, additive migration `v4` (v1–v3 preserved), `accounts.js` and `emails.js` modules, and hourly cron (`0 * * * *`). Live section above still describes production, not this branch. Google OAuth and Resend deliveries require operator setup and remain unverified against real providers.
+Shared Jesklabs Accounts owns Google, email codes and SSO through the `SpellingClient` service binding; this app never sends sign-in mail or talks to Google itself. AccountStore (migration `v4`, unchanged) keeps subject-keyed sessions, family links, preferences and delivery claims; client responses use purpose-bound HMAC refs, never raw subjects. Pending email links are short-lived, HMAC-email-keyed and browser-bound; session and SSO-pending cookies encrypt identity data. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders via this Worker's Resend key (notifications only, hourly cron). Deleting sign-in removes this app's link; shared Accounts deletes its user only when no other app links remain. Unlinked lost codes cannot be recovered.
 
-## Shared Jesklabs Accounts cutover (pending, not deployed)
-
-Branch `jesklabs-accounts` replaces app-owned Google/email authentication with shared Accounts. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. No accounts required: Family Code/PIN use is unchanged. App-local sessions/links use stable Accounts subjects; emails are mutable. All `FP_SIGNIN_*` flags default off; the `ACCOUNTS_SVC` service binding and client registration are prerequisites. Family Practice Resend is notifications-only. Deleting sign-in removes this app link; shared Accounts deletes its user only when no other app links remain.
-
-Local cutover verification: 162/162 Node tests; API smoke 65 assertions / 53 requests; general UI 2 desktop/mobile journeys; sign-in API 91 checks; sign-in UI 213 assertions / 54 screenshots at desktop and 390×844; Parent layouts at 390×844, 360×740 and desktop. All pass. Uploader dry-run shows SpellingClient service binding, both gates `0`, no migration beyond v4 and zero network requests. Family links remain keyed server-side by pairwise subject, with purpose-bound public parent refs. Pending email links are short-lived, HMAC-email-keyed and browser-bound; failed sends cannot replace existing intent. Session/SSO-pending cookies encrypt identity data. No backfill is needed for the dormant empty store. Production sign-in remains off; real sender/Google prerequisites remain outstanding.
+To turn on: redeploy with `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1` once shared Accounts can deliver Family Practice codes / complete Google. Real email delivery, Google, SSO across apps and physical iOS behavior are unverified until then.
 
 ## Roadmap
 
-**Done on pending branch**
-- Shared Accounts cutover: subject-keyed parent identity, SSO-first entry and explicit confirmation; shell v12 (not deployed). The earlier optional identity/notification foundation, AccountStore v4 and shell v11 shipped in b459cab but remain dormant.
+**Done**
+- Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14, gated off).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
@@ -78,9 +74,9 @@ Local cutover verification: 162/162 Node tests; API smoke 65 assertions / 53 req
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
 
-- **2026-11-14 (pending): Shared Jesklabs Accounts, not per-app identity providers.** Accounts owns Google, email-code authentication and shared SSO; Family Practice owns subject-keyed sessions, family links and opt-in notifications. SSO always asks explicit confirmation with a masked account before creating a local session; a different-account action clears pending state. No accounts required, no child identity, no Family Codes in auth redirect URLs. Resend here is notifications-only, all sign-in flags default off, and local deletion removes this app link (and the shared account if it has no other app links). This supersedes the per-app provider setup in the earlier optional identity decision.
-- **2026-11-14 (pending): MCP links never embed a reversible family identifier.** Bare SHA-256 of the ~46-bit Family Code permits offline guessing. New fpc2 links encrypt/authenticate routing with AES-GCM under a purpose-derived SESSION_SECRET key; old fp links are retired, not grandfathered. Parent lists retired links for revocation/replacement. Account response family references and PIN cookie bindings use purpose-bound HMAC; stable secrets remain required.
-- **2026-11-14 (pending): Optional parent identity, never kid accounts.** Google and emailed-code sign-in may link existing families and recover linked codes. Code/PIN-only access remains supported. Verified parent email is allowed only for account features and opt-in summaries/notifications; unlinked lost codes still have no recovery. This supersedes the earlier blanket no-email/no-login decision.
+- **2026-11-14: Shared Jesklabs Accounts, not per-app identity providers.** Accounts owns Google, email-code authentication and shared SSO; Family Practice owns subject-keyed sessions, family links and opt-in notifications. SSO always asks explicit confirmation with a masked account before creating a local session; a different-account action clears pending state. No accounts required, no child identity, no Family Codes in auth redirect URLs. Resend here is notifications-only, all sign-in flags default off, and local deletion removes this app link (and the shared account if it has no other app links). This supersedes the per-app provider setup in the earlier optional identity decision.
+- **2026-11-14: MCP links never embed a reversible family identifier.** Bare SHA-256 of the ~46-bit Family Code permits offline guessing. New fpc2 links encrypt/authenticate routing with AES-GCM under a purpose-derived SESSION_SECRET key; old fp links are retired, not grandfathered. Parent lists retired links for revocation/replacement. Account response family references and PIN cookie bindings use purpose-bound HMAC; stable secrets remain required.
+- **2026-11-14: Optional parent identity, never kid accounts.** Google and emailed-code sign-in may link existing families and recover linked codes. Code/PIN-only access remains supported. Verified parent email is allowed only for account features and opt-in summaries/notifications; unlinked lost codes still have no recovery. This supersedes the earlier blanket no-email/no-login decision.
 - **2026-11-14: Share links, not a public library.** Owner-approved bearer links carry immutable spelling snapshots with sentences and an optional parent-selected verse; never identity or progress. Links never expire unless the owner stops them. Imported copies remain independent.
 - **2026-11-14: Single-admin class lists are publishing feeds.** One creating family can append immutable weeks; other families choose which kids receive copies. No school accounts, rosters, search, multi-admin editing, or remote changes to imported copies. This narrowly replaces the earlier blanket “no teacher/class mode” decision, without expanding into classroom management.
 
@@ -96,15 +92,11 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - **2026-11-14: Open-sourced under MIT with fresh history.** *Why:* trust for parents and contributions. Earlier history contained personal details, so it was not published.
 - **2026-11-14: Installable PWA**; the shell is cached and family data stays online-only. *Why:* families use phones and tablets, and no family data should sit in shared caches.
 - **2026-11-13: Voice is Workers AI Deepgram Aura-1 with a two-tier cache.** *Why:* browser speech is poor or missing on Linux Chromium. MeloTTS is deprecated on 2026-11-20. The shared cache keeps the per-character pricing within the free tier.
-- **2026-11-13: Public, Family Code plus per-family Parent PIN, child first names only.** Optional parent accounts are now approved on the pending signin branch (2026-11-14); code/PIN-only use remains supported. *Why:* zero setup friction and no identity data to protect. Lost code means lost data, which is mitigated by printable codes and exports. An earlier Google-login gate was removed.
+- **2026-11-13: Public, Family Code plus per-family Parent PIN, child first names only.** Optional parent sign-in was added 2026-11-14; code/PIN-only use remains supported. *Why:* zero setup friction and no identity data to protect. Lost code means lost data, which is mitigated by printable codes and exports. An earlier Google-login gate was removed.
 - **2026-11-13: Parents run it for their own kids, not school accounts.** Approved single-admin class-list feeds (2026-11-14) let families exchange practice material without rosters or school-managed student data.
 - **2026-11-13: Cloudflare Workers Free instead of a VPS or Vercel.** *Why:* the free tier with built-in SQLite DOs and AI, and a public kids' app shouldn't share a host with private services.
 - **2026-11-13: Parents paste verse text; no Bible API.** *Why:* translation licensing. Samples use public-domain KJV.
 - **2026-11-13: Zero npm runtime dependencies, vanilla JS, no build step.** *Why:* small, auditable, easy for agents and self-hosters.
-
-## Changelog — pending shared Accounts cutover
-
-- Shared Jesklabs Accounts service cutover build; shell v12 (not deployed). SSO-first entry, explicit masked-account confirmation/decline, POST-based Google start without Family Codes in URLs, immediate email attach redirect, and separate app-only / local-then-shared logout. Setup documents a service binding and default-off feature vars, with Resend only for opt-in notifications. Provider integration and production cutover remain unverified.
 
 ## Changelog — shipped 2026-11-14 in `b459cab` (shell v11; migration v4 + hourly cron applied; prod smoke 53 requests / 64 assertions; retired `fp_` links return 401 with guidance)
 
@@ -116,6 +108,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-14 Jesklabs Accounts cutover (`972a419`), shell v12: optional parent sign-in now delegates Google, email codes and SSO to shared Jesklabs Accounts (`SpellingClient` binding); app-owned codes, Google OAuth and the sign-in email template removed. SSO-first entry with explicit masked-account confirm/decline, POST-based Google start without Family Codes in URLs, immediate email attach redirect, app-only vs. all-Jesklabs sign-out, subject-keyed links and unsubscribe tokens, numeric `accounts` ops stats. Both gates off in production. Local: 162/162 tests, API smoke 65 assertions / 53 requests, UI 2 journeys, sign-in API 91 checks, sign-in UI 213 assertions / 54 screenshots at desktop and 390×844, parent layouts at three viewports; Opus review of Sol's build found no blockers. Live checks: config all false, sign-in routes 404, ops `accounts.service=ok` (binding probe), shell v12 served, static pages 200. Full prod smoke deferred (family-creation rate limit from earlier runs).
 - 2026-11-14 sharing: share links (`/s/…`) and single-admin class lists (`/c/…`) with QR, follows and new-week cards, multi-kid imports with optional verse, MCP `get_shared_list`/`import_shared_list`, reports; ShareStore migration v3 applied; shell v8. Live checks: unknown share/class → 404, share pages `noindex`; core prod smoke passed (53 requests / 64 assertions). Sharing smoke against prod pending (family-creation rate limit). Smokes no longer send `CF-Connecting-IP` to non-localhost targets (Cloudflare rejects it).
 - 2026-11-14 `696881b`: separate Parent page (kid view keeps 3 tabs); mobile parent sheets with pinned Save/Cancel and bounded textarea; MCP connector (per-family bearer connection links, add/read or read-only, 7 tools, revoke; protocol 2025-11-25); pinch/double-tap/auto-zoom and overscroll disabled; invocation URL logging off. Live checks: bogus token → 401, foreign Origin → 403, GET → 405; full prod smoke passed (53 HTTP requests, 64 assertions, including live MCP tools/scopes/revocation).
 - 2026-11-14 `5116a93`: Learn starts straight from the list (intro page removed); stage tabs are tappable to jump between stages (forward jumps logged as skips); bottom "Skip to recall" removed.
