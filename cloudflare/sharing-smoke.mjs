@@ -4,7 +4,7 @@ if(!['localhost','127.0.0.1','[::1]'].includes(new URL(origin).hostname))throw E
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const family=()=>({code:'',cookie:''});const a=family(),b=family();
 async function req(f,path,data,method=data===undefined?'GET':'POST') {
- const r=await fetch(origin+path,{method,headers:{'Content-Type':'application/json','X-Family-Code':f.code,Cookie:f.cookie},body:data===undefined?undefined:JSON.stringify(data)});
+ const r=await fetch(origin+path,{method,headers:{'Content-Type':'application/json','X-Family-Code':f.code,Cookie:f.cookie,'CF-Connecting-IP':'192.0.2.200'},body:data===undefined?undefined:JSON.stringify(data)});
  if(r.headers.has('set-cookie'))f.cookie=r.headers.get('set-cookie').split(';')[0];
  const body=r.headers.get('Content-Type')?.includes('json')?await r.json():await r.text();
  return {status:r.status,body,headers:r.headers};
