@@ -26,11 +26,31 @@ try {
   check((await req('/api/admin/kids',{name:'Alex'})).status,200);
   const list=await req('/api/admin/lists',{kid_id:1,title:'One word',words:[{word:'friend',sentence:'My friend is kind.'}]});check(list.status,201);
   const verse=await req('/api/admin/verses',{kid_id:1,reference:'John 11:35',text:'Jesus wept.',translation:'KJV'});check(verse.status,201);
+  const connection=await req('/api/admin/connections',{name:'Disposable smoke assistant',scope:'add-read'});check(connection.status,201);
+  const token=connection.body.token;
+  const rpc=(method,params={})=>req('/mcp/t/'+token,{jsonrpc:'2.0',id:1,method,params});
+  check((await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'Local smoke',version:'1'}})).body.result.protocolVersion,'2025-11-25');
+  check((await req('/mcp/t/'+token)).status,405);
+  check((await req('/mcp/t/'+token,{jsonrpc:'2.0',method:'notifications/initialized'})).status,202);
+  check((await rpc('tools/list')).body.result.tools.length,7);
+  const tool=async(name,args={})=>{const r=await rpc('tools/call',{name,arguments:args});check(r.status,200);check(r.body.result.isError,undefined);return JSON.parse(r.body.result.content[0].text);};
+  check((await tool('list_kids')).kids[0].name,'Alex');
+  check((await tool('list_spelling_lists',{kid_id:1})).lists.length,1);
+  check((await tool('get_spelling_list',{id:list.body.id})).list.words[0].word,'friend');
+  const mcpList=(await tool('add_spelling_list',{kid_id:1,title:'Assistant list',words:[{word:'kind'}]})).list;
+  check((await tool('update_spelling_list',{id:mcpList.id,kid_id:1,title:'Updated assistant list',words:[{word:'light',sentence:'Turn on the light.'}]})).list.words[0].word,'light');
+  check(Number.isSafeInteger((await tool('add_verse',{kid_id:1,reference:'John 11:35',text:'Jesus wept.',translation:'KJV'})).id),true);
+  check((await tool('get_progress',{kid_id:1})).attempts,undefined);
+  check((await req('/api/admin/connections')).body.connections[0].token,undefined);
+  const readOnly=await req('/api/admin/connections',{name:'Read only smoke',scope:'read-only'});check(readOnly.status,201);
+  check((await req('/mcp/t/'+readOnly.body.token,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'add_verse',arguments:{kid_id:1,reference:'John 11:35',text:'Jesus wept.'}}})).body.result.isError,true);
+  check((await req('/api/admin/connections/revoke',{id:readOnly.body.connection.id})).status,200);
+  check((await req('/mcp/t/'+readOnly.body.token,{jsonrpc:'2.0',id:2,method:'ping'})).status,401);
   const state=(await req('/api/state?kid=1')).body;
   check((await req('/api/parent/lock',{})).status,200);
   check((await req('/api/admin/export')).status,401);
   const session=(await req('/api/sessions',{kid_id:1,list_id:list.body.id,kind:'spelling'})).body;
-  check((await req('/api/attempts',{session_id:session.id,word_id:state.lists[0].words[0].id,typed:'friend'})).body.correct,true);
+  check((await req('/api/attempts',{session_id:session.id,word_id:state.lists.find(l=>l.id===list.body.id).words[0].id,typed:'friend'})).body.correct,true);
   check((await req('/api/sessions/complete',{session_id:session.id})).status,200);
   check((await req('/api/progress?kid=1')).body.listsCompleted,1);
   const vs=(await req('/api/sessions',{kid_id:1,kind:'verse'})).body;
@@ -48,7 +68,11 @@ try {
   check((await req('/api/state')).body.parent,false);
   code=codeA;cookie=cookieB;check((await req('/api/admin/export')).status,401);
   check((await req('/api/state')).body.kids[0].name,'Alex');
-  cookie=cookieA;check((await req('/api/admin/delete-family',{pin:'1234',confirmation:'Smoke A'})).status,200);families.delete(codeA);
+  check((await tool('list_kids')).kids[0].name,'Alex');
+  cookie=cookieA;
+  check((await req('/api/admin/connections/revoke-all',{})).status,200);
+  check((await rpc('ping')).status,401);
+  check((await req('/api/admin/delete-family',{pin:'1234',confirmation:'Smoke A'})).status,200);families.delete(codeA);
   check((await req('/api/state')).status,404);
   code=codeB;cookie=cookieB;check((await req('/api/state')).body.kids[0].name,'Sam');
   check((await req('/api/admin/delete-family',{pin:'5678',confirmation:'Smoke B'})).status,200);families.delete(codeB);
@@ -72,4 +96,4 @@ try {
   }
   if(cleanupErrors.length)throw new AggregateError(smokeError?[smokeError,...cleanupErrors]:cleanupErrors,'Local smoke failed to clean up disposable families');
 }
-console.log(`PASS: ${requests} local HTTP requests, ${checks} assertions; two families, practice, restore, cross-family isolation and deletion.`);
+console.log(`PASS: ${requests} local HTTP requests, ${checks} assertions; two families, practice, restore, MCP tools/scopes/revocation, cross-family isolation and deletion.`);

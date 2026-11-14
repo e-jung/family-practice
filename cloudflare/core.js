@@ -1,3 +1,4 @@
+import {initConnections,createConnection,connectionFields,handleMcp} from './mcp.js';
 // REST/SQL port of ../server.js; grading logic remains shared in lib/practice.js.
 import {checkSpelling,compareVerse,trickyWords,words,normalize,scheduleWord,reviewBank} from "../lib/practice.js";
 import {isParent,equalSecret,signSession,cookie,hashPin,validPin,sha256} from "./auth.js";
@@ -38,6 +39,7 @@ export function createHandler(ctx, env) {
  CREATE INDEX IF NOT EXISTS verse_attempts_session ON verse_attempts(session_id);
  CREATE INDEX IF NOT EXISTS attempts_kid ON attempts(kid_id,created_at);
  CREATE INDEX IF NOT EXISTS verse_attempts_kid ON verse_attempts(kid_id,created_at);`);
+  initConnections(sql);
   const all = (query, ...p) => [...sql.exec(query, ...p)];
   const get = (query, ...p) => all(query, ...p)[0];
   const run = (query, ...p) => {
@@ -418,6 +420,21 @@ export function createHandler(ctx, env) {
   }
   sql.exec("CREATE TABLE IF NOT EXISTS pin_limit(id INTEGER PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL)");
   return async (request) => {
+    if(new URL(request.url).pathname==='/mcp') {
+      if(!get('SELECT id FROM family WHERE id=1'))return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
+      return handleMcp(request,sql,(name,b)=>{
+        const kid=()=>{if(!get('SELECT id FROM kids WHERE id=? AND archived=0',b.kid_id))fail('Kid not found',404);};
+        const list=id=>{const l=get('SELECT l.* FROM lists l JOIN kids k ON k.id=l.kid_id WHERE l.id=? AND l.archived=0 AND k.archived=0',id);if(!l)fail('List not found',404);return {...l,words:all('SELECT * FROM words WHERE list_id=? AND archived=0 ORDER BY id',id)};};
+        if(name==='list_kids')return {kids:all('SELECT id,name,grade FROM kids WHERE archived=0 ORDER BY id')};
+        if(name==='get_spelling_list')return {list:list(b.id)};
+        kid();
+        if(name==='list_spelling_lists')return {lists:all('SELECT id,kid_id,title,date FROM lists WHERE kid_id=? AND archived=0 ORDER BY date DESC,id DESC',b.kid_id)};
+        if(name==='add_spelling_list')return {list:list(addList(b))};
+        if(name==='update_spelling_list'){list(b.id);return {list:list(addList(b))};}
+        if(name==='add_verse')return {id:addVerse(b)};
+        const data=progress(b.kid_id);delete data.attempts;delete data.learnAttempts;delete data.verseAttempts;return data;
+      });
+    }
     const headers = new Headers(); let status=200; let response;
     const req={request,url:request.url,method:request.method,headers:Object.fromEntries(request.headers)};
     req.headers.host=new URL(request.url).host;
@@ -497,6 +514,14 @@ export function createHandler(ctx, env) {
       if (p === "/api/config" && method === "GET") return json({serverTts:true});
       if (p.startsWith("/api/admin/") && !parent)
         fail("Unlock Parent mode first", 401);
+      if(p==='/api/admin/connections' && method==='GET')return json({connections:all(`SELECT ${connectionFields} FROM mcp_connections ORDER BY created_at,id`)});
+      if(p==='/api/admin/connections' && method==='POST')return json(await createConnection(sql,env.familyIdHash,await body(req,2048)),201);
+      if(p==='/api/admin/connections/revoke' && method==='POST') {
+        const b=await body(req,2048);const id=str(b.id,64);
+        if(!get('SELECT id FROM mcp_connections WHERE id=?',id))fail('Connection not found',404);
+        sql.exec('DELETE FROM mcp_connections WHERE id=?',id);sql.exec('DELETE FROM mcp_limits WHERE key=?','token:'+id);return json({ok:true});
+      }
+      if(p==='/api/admin/connections/revoke-all' && method==='POST'){await body(req,2048);sql.exec('DELETE FROM mcp_connections');sql.exec("DELETE FROM mcp_limits WHERE key LIKE 'token:%'");return json({ok:true});}
       if (p === "/api/state" && method === "GET") {
         const kids = all("SELECT * FROM kids WHERE archived=0 ORDER BY id");
         const kid = url.searchParams.has("kid")
@@ -762,7 +787,7 @@ export function createHandler(ctx, env) {
       if (p === "/api/admin/delete-family" && method === "POST") {
         const b=await body(req,2048); await verifyPin(b.pin);
         if(!b.confirmation || (b.confirmation !== family.name && b.confirmation !== env.familyCode)) fail("Type the family name or code exactly");
-        tx(()=>{sql.exec("DELETE FROM word_bank");for(const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`); sql.exec("DELETE FROM pin_limit; DELETE FROM family; DELETE FROM ops_meta; DELETE FROM ops_daily");});
+        tx(()=>{sql.exec("DELETE FROM mcp_connections; DELETE FROM mcp_limits; DELETE FROM word_bank");for(const t of [...tables].reverse()) sql.exec(`DELETE FROM ${t}`); sql.exec("DELETE FROM pin_limit; DELETE FROM family; DELETE FROM ops_meta; DELETE FROM ops_daily");});
         res.setHeader("Set-Cookie",cookie("",0)); return json({ok:true});
       }
       if (p === "/api/admin/remove-kid" && method === "POST") {

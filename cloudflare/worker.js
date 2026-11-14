@@ -1,8 +1,9 @@
+import {routeToken} from './mcp.js';
 import { tts } from './tts.js';
 export { TtsCache } from './tts.js';
 import { createHandler } from './core.js';
 import {sha256,generateFamilyCode,normalizeCode,validCode,equalSecret} from './auth.js';
-const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
+const json=(data,status=200,extra={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...extra}});
 export class FamilyDatabase {
   constructor(ctx,env) { this.ctx=ctx;this.env={...env};this.handler=createHandler(ctx,this.env); }
   fetch(request) {
@@ -88,6 +89,16 @@ export class RegistryLimits {
 export default {
   async fetch(request,env,ctx) {
     const url=new URL(request.url);
+    if(url.pathname==='/mcp' || url.pathname.startsWith('/mcp/t/')) {
+      if(request.headers.has('Origin') && request.headers.get('Origin')!==url.origin) return json({error:'Cross-origin request denied'},403);
+      if(request.method!=='POST')return json({error:'Method not allowed'},405,{Allow:'POST'});
+      const token=routeToken(request);
+      if(!token)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
+      const headers=new Headers(request.headers);headers.delete('X-Family-Code');headers.delete('Cookie');headers.set('X-Internal-Family-Hash',token[2]);
+      headers.set('Authorization','Bearer '+token[1]);
+      const internal=new URL(request.url);internal.pathname='/mcp';internal.search='';
+      return env.FAMILY.get(env.FAMILY.idFromName('fam:'+token[2])).fetch(new Request(internal,new Request(request,{headers})));
+    }
     if(!url.pathname.startsWith('/api/')) {
       const assetURL=new URL(request.url);
       if(url.pathname.startsWith('/f/') || ['/privacy','/privacy/'].includes(url.pathname)) assetURL.pathname='/';
