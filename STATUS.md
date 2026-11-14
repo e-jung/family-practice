@@ -10,14 +10,9 @@ Last updated: 2026-11-14
 
 - Hosted instance: https://spelling.jesklabs.com (listed as "spelling" on jesklabs.com; the in-app name is "Family Practice").
 - Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`), and Workers AI for speech. Migrations deployed: `v1`, `v2`.
-- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v6`.
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v7`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
 - The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
-
-## Changelog-pending (branch `parent-mcp`; not deployed)
-
-- Separate Parent page: Kids, per-kid Spelling lists and Bible verses, This device, Family, and Connect an AI assistant. The kid view always has three fitting tabs. Mobile parent sheets keep Save/Cancel visible, scroll their body, bound textareas and normalize iOS date inputs. Prepared shell VERSION: `v7` (live remains `v6`).
-- MCP connector complete: named per-family hash-only bearer connections, add/read or read-only scopes, revoke/revoke-all, seven tools and bounded aggregate progress. Automatic invocation URL logging is disabled in the pending deployment config to avoid retaining bearer links (application logs remain enabled). Pre-auth IP/global dispatch caps also bound unknown-token traffic. Local checks: 80/80 automated tests; real Miniflare smoke 53 HTTP requests / 65 assertions; two complete UI journeys; parent/list/verse sheets at 390×844, 360×740 and desktop; practice layout at all three sizes; raw curl initialize → tools/list → add list → aggregate progress → revoke/401. Offline deployment plan includes six modules and makes zero network requests. Real iPhone standalone zoom/keyboard behavior and live MCP clients remain unverified; no deployment or Cloudflare account API calls authorized.
 
 ## Configuration
 
@@ -84,6 +79,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-14 `696881b`: separate Parent page (kid view keeps 3 tabs); mobile parent sheets with pinned Save/Cancel and bounded textarea; MCP connector (per-family bearer connection links, add/read or read-only, 7 tools, revoke; protocol 2025-11-25); pinch/double-tap/auto-zoom and overscroll disabled; invocation URL logging off. Live checks: bogus token → 401, foreign Origin → 403, GET → 405; full prod smoke pending (family-creation rate limit).
 - 2026-11-14 `5116a93`: Learn starts straight from the list (intro page removed); stage tabs are tappable to jump between stages (forward jumps logged as skips); bottom "Skip to recall" removed.
 - 2026-11-14 `c6d0989`: Learn stages by length, no demotion, fast-track, skip to recall / start test; Leitner Review + word bank; safe-area practice band; kid-facing voice status removed; smoke cleans up in `finally`.
 - 2026-11-14 `fd730f7`: impeccable redesign, on-screen keyboard, key sound + haptics (default on).
