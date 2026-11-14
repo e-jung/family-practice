@@ -7,6 +7,7 @@ A free, open-source spelling and Bible-verse practice app, built by a parent for
 - **Spelling:** hear a word and sentence, learn it with progressively fading letter clues, then take a test. Includes printable lists, retries, and tricky-word review.
 - **Verses:** parent-provided wording, read/listen, progressive blanks, first letters, memory typing, and reference quizzes. Samples use public-domain KJV.
 - **Progress:** first-try test accuracy, separate Learn history, verse mastery, and practice streaks.
+- **Sharing (Cloudflare):** share an immutable spelling list with sentences and an optional verse, or publish a single-admin class feed. Families import independent copies; no public library or search.
 - **Phones:** install the Cloudflare build on your home screen; app shell loads offline, but family data and saving require internet.
 
 - Project status, roadmap and decisions: [STATUS.md](STATUS.md)
@@ -14,6 +15,8 @@ A free, open-source spelling and Bible-verse practice app, built by a parent for
 ## Privacy
 
 No ads, analytics, trackers, email, or login provider. Use first names or nicknames only. A Family Code opens a family's practice; its Parent PIN protects editing and backups. Save both: there is no email recovery. Parents can export or delete their data.
+
+Optional share links expose only the selected list title/date, note, words and sentences, plus a selected verse. Class feeds expose their name and published weeks. Never put private details in those fields. Anyone with the link can view or copy it until its owner stops sharing; imported copies remain independent. Profiles, family codes and progress are not included.
 
 Cloud voice sends only spoken text to Cloudflare Workers AI, with device speech as an alternative/fallback. Public shell assets are cached on the device; family API data and answers are not stored in the offline cache. Already-heard audio has a bounded, volatile memory cache. Hosting request logs may contain normal technical information. Optional operator statistics contain aggregates only.
 

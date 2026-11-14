@@ -11,7 +11,7 @@ Family Practice helps families practice weekly spelling lists, memorize parent-p
 - Progress: first-try accuracy, missed words, verse mastery, and practice streaks.
 - The multi-family build uses a Family Code for kid access and a per-family Parent PIN for edits. No email, login provider, or recovery service: reduce setup friction and avoid collecting identity data. Lost code means lost access; support printed codes and backups.
 - Collect only first names or nicknames and optional grade labels. Do not add last names, email, birth dates, schools, or photos.
-- Designed for parent-managed family use, not classrooms. Teacher/class features require a separate privacy and product review.
+- Designed for parent-managed family use. Approved class lists are single-admin publishing feeds, not school accounts, rosters, classrooms, or a public content library. Never add student identity collection.
 - No analytics, ads, trackers, external fonts, or third-party browser requests. Keep CSP and DOM escaping intact.
 - Parents provide verse text to avoid translation licensing/API dependencies; do not fetch copyrighted Bible translations. Included samples use public-domain KJV.
 - Keep operation within free-tier limits by default; review costs before adding paid services.
@@ -39,13 +39,24 @@ Keep both builds working and tested. `lib/practice.js` is shared answer checking
 - Parent cookies are HMAC-signed using `SESSION_SECRET`, family-bound, and invalidated by PIN changes. PIN hashes use salted PBKDF2.
 - Limits: 10 kids/family, 200 lists, 100 current words/list, 300 verses, 2,000 characters/verse, and the newest 50,000 attempts. Preserve bounded session history and import limits; see `cloudflare/deploy.md`.
 
+## Sharing (Worker build)
+
+- `ShareStore` is one SQLite Durable Object, `SHARES.idFromName("shares")`. A singleton keeps cross-family ownership, follower/import counters, and publish throttles serialized; it is intentionally bounded to a small free-tier family app, with no public search or library.
+- Ownership is HMAC-SHA-256 of the non-reversible family hash with `SESSION_SECRET`. The store never receives raw Family Codes or kid IDs/names. Keep the secret stable: it also preserves share ownership.
+- Public links `/s/:slug` (immutable one-off snapshot) and `/c/:slug` (single-admin updating class feed) need no code to view. Slugs reuse kid-safe family-code words plus random base32. They are bearer links, not indexed listings. Share/class shell and API responses are noindex and never cached as family data.
+- Snapshots allow only title, date, optional note, words with sentences, and optional verse reference/text/translation. Never copy kid names, IDs, family code, progress, or typed answers. User-provided titles/notes/content can still contain identifying text; remind parents to omit it.
+- Class links never expire unless stopped; each published week is immutable. Maximum five active class lists per family, one publish/class/10 minutes, newest 200 weeks retained. Imported copies are independent and editable; stopping a link never removes copies.
+- Follows belong to the follower family DO, including selected kid IDs, verse preference and imported-week tracking. Public feed counters are aggregate only. Latest-week checks are batched and cached for ten minutes; parent unlock is required to import, never to see a new-week card.
+- Registry quotas: 20 share/class creations/day/family, 60 imports/hour/salted IP, 120 public reads/minute/salted IP. Reports store counts and optional reasons (300 characters max); ops returns numeric aggregates only.
+- MCP adds read-scope `get_shared_list {url_or_slug}` and write-scope `import_shared_list {url_or_slug,kids[],include_verse?}` using the same bounded validation/import implementation as Parent. No public listing/search tool.
+
 ## Voice
 
 - Browser speech quality/availability varies, particularly on Linux Chromium; cloud speech provides a consistent default, with device fallback to keep practice available.
 - Worker: Cloudflare Workers AI `@cf/deepgram/aura-1`, default speaker `asteria` (override `TTS_SPEAKER`), MP3 through `/api/tts`; device speech on failure/quota or explicit selection.
 - Cache: `caches.default` → SQLite `TtsCache` → AI. Keys include model, speaker, encoding, language, and text hash. Validate MP3 signatures; max clip 512 KB, durable LRU cap 400 MiB.
 - Cache-miss character budgets: 6,000 globally/UTC day, 1,500/family/UTC day, 2,000/hashed IP/hour, 300/request. Failed inference counts; cache hits do not. Account-wide free quotas can change independently.
-- Migration `v1` creates family/registry objects; additive `v2` creates `TtsCache`. Never rewrite deployed migration history.
+- Migration `v1` creates family/registry objects; additive `v2` creates `TtsCache`; additive `v3` creates `ShareStore`. Never rewrite deployed migration history.
 - Node: `PIPER_HOST` defaults empty and must be explicitly configured for Piper synthesis. Standard Wyoming port is 10200. Without Piper, use browser speech; never embed a private network endpoint.
 
 ## Development and checks

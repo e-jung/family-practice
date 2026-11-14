@@ -41,6 +41,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 ## Roadmap
 
 **Done on pending branch**
+- Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (not deployed).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
 **Next up**
@@ -52,12 +53,15 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 - Auto-generated kid-level example sentences for bare word lists: needs an LLM cost/quota review and parent review of the output.
 - A "daily practice" home: review due words, then the current list, then a verse, in one tap.
 - Backups: a gentle reminder to export, or optional encrypted cloud backup without collecting identity.
-- Teacher/class mode: **not planned**; it would reopen school student-privacy obligations (see decisions).
+- Multi-admin classroom/roster/school-account mode: **not planned**. Single-admin class-list publishing is the deliberately limited sharing feature (see decisions).
 - Rename in-app branding to match "spelling" on jesklabs.com: undecided.
 
 ## Decisions
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
+
+- **2026-11-14: Share links, not a public library.** Owner-approved bearer links carry immutable spelling snapshots with sentences and an optional parent-selected verse; never identity or progress. Links never expire unless the owner stops them. Imported copies remain independent.
+- **2026-11-14: Single-admin class lists are publishing feeds.** One creating family can append immutable weeks; other families choose which kids receive copies. No school accounts, rosters, search, multi-admin editing, or remote changes to imported copies. This narrowly replaces the earlier blanket “no teacher/class mode” decision, without expanding into classroom management.
 
 - **2026-11-14: Suppress accidental zoom on the child practice desk.** Viewport scaling limits, manipulation touch behavior, iOS pinch guards and ≥16px form controls prevent zoom from disrupting practice. Single-finger scrolling and rem-based OS text sizing remain; pinch magnification is intentionally restricted (accessibility trade-off documented in DESIGN.md).
 - **2026-11-14: Parent tools live on a separate page, not in kid tabs.** Wrapping section controls keep every tool reachable on a phone; sheets scroll independently of their visible action footer.
@@ -72,10 +76,14 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - **2026-11-14: Installable PWA**; the shell is cached and family data stays online-only. *Why:* families use phones and tablets, and no family data should sit in shared caches.
 - **2026-11-13: Voice is Workers AI Deepgram Aura-1 with a two-tier cache.** *Why:* browser speech is poor or missing on Linux Chromium. MeloTTS is deprecated on 2026-11-20. The shared cache keeps the per-character pricing within the free tier.
 - **2026-11-13: Public, no accounts. Family Code plus per-family Parent PIN, first names only.** *Why:* zero setup friction and no identity data to protect. Lost code means lost data, which is mitigated by printable codes and exports. An earlier Google-login gate was removed.
-- **2026-11-13: Parents run it for their own kids, not schools.** *Why:* this avoids COPPA, FERPA and district vetting obligations.
+- **2026-11-13: Parents run it for their own kids, not school accounts.** Approved single-admin class-list feeds (2026-11-14) let families exchange practice material without rosters or school-managed student data.
 - **2026-11-13: Cloudflare Workers Free instead of a VPS or Vercel.** *Why:* the free tier with built-in SQLite DOs and AI, and a public kids' app shouldn't share a host with private services.
 - **2026-11-13: Parents paste verse text; no Bible API.** *Why:* translation licensing. Samples use public-domain KJV.
 - **2026-11-13: Zero npm runtime dependencies, vanilla JS, no build step.** *Why:* small, auditable, easy for agents and self-hosters.
+
+## Changelog-pending
+
+- `sharing` branch: immutable share links, single-admin class feeds, optional verse import, parent-gated multi-kid imports and follows, source labels, abuse reports, aggregate counters, QR encoder, noindex public pages, MCP sharing tools, and additive ShareStore migration `v3`. Prepared locally only; no production deployment or push.
 
 ## Changelog (deploys)
 
