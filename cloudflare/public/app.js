@@ -1194,7 +1194,7 @@ function editKid(k) {
       }),
   );
 }
-const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Parent sign-in", "Connect an AI assistant", "Shared lists", "Class lists", "Following"];
+const PARENT_SECTIONS = ["Kids", "Spelling lists", "Bible verses", "This device", "Family", "Sign-in & email", "Connect an AI assistant", "Shared lists", "Class lists", "Following"];
 function parentHome() {
   if (!state.parent) return unlock();
   parentPage = true;
@@ -1213,7 +1213,7 @@ function parentHome() {
     const host = el("div", {}, el("p", {}, "Loading…")); app.append(host);
     sharing[parentSection === "Shared lists" ? "sharedAdmin" : parentSection === "Class lists" ? "classesAdmin" : "followsAdmin"](host).catch(err => host.replaceChildren(el("p", {role:"alert"}, err.message), button("Try again", parentHome, "secondary"))); return;
   }
-  if (parentSection === "Parent sign-in") { const host = el("section", {class: "section"}); app.append(host); identity.manage(host); return; }
+  if (parentSection === "Sign-in & email") { const host = el("section", {class: "section"}); app.append(host); identity.manage(host); return; }
   if (parentSection === "Connect an AI assistant") { assistantControls(); return; }
   if (parentSection === "Spelling lists" || parentSection === "Bible verses") { parentPractice(); return; }
   const section = (title, ...children) => el("div", { class: "section" }, el("div", { class: "section-title" }, el("h2", {}, title)), ...children);
@@ -1601,7 +1601,7 @@ const sharing = createSharingUI({el, button, field, input, textArea, modal, toas
 (async () => {
   await identity.init();
   const signedInReturn = new URLSearchParams(location.search).has("signedIn");
-  if (signedInReturn) { history.replaceState({}, "", "/"); landing(); return; }
+  if (signedInReturn) { history.replaceState({}, "", "/"); await identity.finishSignIn(); return; }
   const publicMatch = location.pathname.match(/^\/(s|c)\/([A-Za-z0-9_-]+)\/?$/);
   if (publicMatch) { await sharing.publicPage(publicMatch[1], publicMatch[2]); return; }
   if (location.pathname === "/privacy" || location.pathname === "/privacy/") { privacy(); return; }

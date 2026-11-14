@@ -1,3 +1,4 @@
+import {authConfig} from './accounts.js';
 import {createSharing} from './sharing.js';
 import {initConnections,createConnection,connectionFields,handleMcp} from './mcp.js';
 // REST/SQL port of ../server.js; grading logic remains shared in lib/practice.js.
@@ -528,7 +529,7 @@ export function createHandler(ctx, env) {
         res.setHeader("Set-Cookie",cookie("",0));
         return json({ok:true});
       }
-      if (p === "/api/config" && method === "GET") return json({serverTts:true});
+      if (p === "/api/config" && method === "GET") return json({serverTts:true,...(env.ACCOUNTS?authConfig(env,req.request):{})});
       if (p.startsWith("/api/admin/") && !parent)
         fail("Unlock Parent mode first", 401);
       if(p==='/api/follows'||/^\/api\/admin\/(shares|classes|import-shared|follows)(?:\/|$)/.test(p)) {

@@ -25,7 +25,15 @@ export class FamilyDatabase {
         if(op==='unlink'){sql.exec('DELETE FROM linked_parents WHERE hash=?',b.hash);return json({ok:true});}
         if(op==='follows')return json({follows:[...sql.exec('SELECT slug FROM class_follows ORDER BY slug')]});
         if(op==='parents')return json({parents:[...sql.exec('SELECT hash,masked FROM linked_parents ORDER BY masked')]});
-        if(op==='digest')return json({name:family.name,kids:[...sql.exec('SELECT id,name FROM kids WHERE archived=0')].map(k=>({...k,lists:[...sql.exec('SELECT DISTINCT l.title FROM lists l JOIN attempts a ON a.list_id=l.id WHERE a.kid_id=? AND a.created_at>=?',k.id,new Date(Date.now()-7*86400000).toISOString())].map(x=>x.title),attempts:[...sql.exec("SELECT correct,first_try,word FROM attempts WHERE kid_id=? AND created_at>=? AND mode='test'",k.id,new Date(Date.now()-7*86400000).toISOString())],reviewDue:[...sql.exec('SELECT COUNT(*) n FROM word_bank WHERE kid_id=? AND due<=?',k.id,new Date().toISOString().slice(0,10))][0].n,verseAttempts:[...sql.exec('SELECT accuracy,created_at FROM verse_attempts WHERE kid_id=? ORDER BY created_at DESC LIMIT 20',k.id)]}))});
+        if(op==='digest') {
+          const since=new Date(Date.now()-7*86400000).toISOString(),today=new Date().toISOString().slice(0,10);
+          const kids=[...sql.exec('SELECT id,name FROM kids WHERE archived=0')].map(k=>{
+            const verses=[...sql.exec('SELECT id,text,reference FROM verses WHERE kid_id=? AND archived=0',k.id)];
+            const stars=before=>verses.reduce((sum,v)=>{const recent=[...sql.exec('SELECT mode,accuracy FROM verse_attempts WHERE kid_id=? AND verse_id=? AND verse_text=? AND verse_reference=? AND created_at<? ORDER BY id DESC LIMIT 10',k.id,v.id,v.text,v.reference,before)];const best=Math.max(0,...recent.filter(a=>a.mode!=='read').map(a=>a.accuracy));return sum+(best>=95?(recent.some(a=>['memory','first'].includes(a.mode)&&a.accuracy>=95)?3:2):best>=70?1:0);},0);
+            const days=new Set([...sql.exec('SELECT substr(created_at,1,10) day FROM attempts WHERE kid_id=? UNION SELECT substr(created_at,1,10) day FROM verse_attempts WHERE kid_id=? ORDER BY day DESC LIMIT 366',k.id,k.id)].map(d=>d.day));let streak=0,day=new Date(today+'T00:00:00Z');if(!days.has(today))day.setUTCDate(day.getUTCDate()-1);while(days.has(day.toISOString().slice(0,10))&&streak<366){streak++;day.setUTCDate(day.getUTCDate()-1);}
+            return {...k,streak,verseStarsChange:stars(new Date().toISOString())-stars(since),lists:[...sql.exec('SELECT DISTINCT l.title FROM lists l JOIN attempts a ON a.list_id=l.id WHERE a.kid_id=? AND a.created_at>=?',k.id,since)].map(x=>x.title),attempts:[...sql.exec("SELECT correct,first_try,word FROM attempts WHERE kid_id=? AND created_at>=? AND mode='test'",k.id,since)],reviewDue:[...sql.exec('SELECT COUNT(*) n FROM word_bank WHERE kid_id=? AND due<=?',k.id,today)][0].n};
+          });return json({name:family.name,kids});
+        }
         return json({error:'Not found'},404);
       }
       const oldParents=path==='/api/admin/delete-family'?[...sql.exec('SELECT hash FROM linked_parents')]:[];
@@ -194,8 +202,8 @@ export default {
       const internal=new URL(request.url);internal.pathname='/api/internal/create';
       const response=await env.FAMILY.get(env.FAMILY.idFromName('fam:'+hash)).fetch(new Request(internal,{method:'POST',headers,body:request.body,duplex:'half'}));
       if(!response.ok)return response;
-      const account=await accountSession(request,env);if(account)await linkFamily(env,account,code);
-      return new Response(JSON.stringify({...await response.json(),code}),{status:201,headers:response.headers});
+      const account=await accountSession(request,env);let linkError;if(account)try{await linkFamily(env,account,code);}catch(e){linkError=e.status?e.message:'Sign-in linking unavailable';}
+      return new Response(JSON.stringify({...await response.json(),code,...(linkError?{linkError}:{})}),{status:201,headers:response.headers});
     }
     // This endpoint is intentionally reachable only from the create branch above.
     if(url.pathname.startsWith('/api/internal/')) return json({error:'Route not found'},404);

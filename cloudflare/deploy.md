@@ -341,20 +341,22 @@ Hourly cron is UTC, but preference matching uses the parent's IANA timezone.
 The helper accepts `digest: {enabled,day,hour}` (Sunday=0) and
 `reminder: {enabled,days,hour}`, with `timezone` at the preference root; flat
 schedule objects and `weeklyDigest`/`practiceReminder` aliases also work.
-AccountStore adapts product preference flags, claims a local calendar date/kind
+The cron handler adapts product preference flags, claims a local calendar date/kind
 before sending, and enforces quotas, bounded fanout and retention. The repeated
 fall-back DST hour must not resend; a nonexistent spring-forward hour is skipped.
 `buildWeeklyDigest` accepts `familyName`, at most ten `kids` summaries
-(`name, attempts, accuracy` in percent, `streak, dueWords`), `practiceUrl` and
+(`name, attempts, accuracy` in percent, `streak, dueWords, lists, trickyWords, verseStarsChange`), `practiceUrl` and
 `unsubscribe`. `sendEmail` returns `{sent:true}` or `{sent:false,reason,...}`.
 There are no automatic retries, including timeouts/429/5xx; ambiguous network
 failures may already have delivered and must not be blindly resent.
 
 For offline/local-only email tests, set `EMAIL_TEST_SINK=1` only on disposable
 loopback Wrangler. The delivery helper additionally requires `APP_ORIGIN` to be
-loopback; callers derive it from the verified local request. It returns
-`{sent:true,test:true,message}` without provider access. AccountStore owns bounded
-sink persistence/test retrieval; never expose sink APIs on production. Never set
+loopback (set `--var APP_ORIGIN:http://localhost:8792` for scheduled local tests). It returns
+`{sent:true,test:true,message}` without provider access. AccountStore stores the last message per address for local
+sink retrieval; never expose sink APIs on production. Never set
 this flag in deploy configuration. Mocked-fetch tests and uploader dry-run make
 zero external API calls. Real Google login, actual mail delivery and scheduled
 production processing remain unverified until separately authorized provider setup.
+
+For jesklabs.com, Resend must supply the exact domain-verification DNS values: the DKIM TXT record (`resend._domainkey`), the SPF TXT record for its sending/return-path subdomain (typically `send`), and that subdomain’s feedback MX record. Preserve existing root MX/SPF records and use the provider’s displayed region-specific values; do not guess DKIM keys. A DMARC TXT policy at `_dmarc` is recommended. This branch does not create or change DNS.

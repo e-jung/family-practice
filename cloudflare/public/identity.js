@@ -17,6 +17,7 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
     if (results[0].status === 'fulfilled') config = results[0].value;
   }
   const available = () => config.google || config.email;
+  async function finishSignIn() { await load(); if(session.families?.length === 1) await open(session.families[0].hash); else landing(); }
   async function linkNewFamily() {
     if (!session.signedIn) return;
     await request('link', {familyCode: current().familyCode});
@@ -28,7 +29,7 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
     await refresh();
     toast('Signed out. Your family space has not been deleted.');
   }
-  function signIn(familyCode = '', done = landing) {
+  function signIn(familyCode = '', done = finishSignIn) {
     // A join link is not proof of parent authority: only link from unlocked Parent mode.
     if (!current().state.parent || familyCode !== current().familyCode) familyCode = '';
     const content = el('div', {}, el('p', {}, 'For parents only. Sign in to reopen linked families and recover their codes. Kids still use a Family Code. No account is required.'));
@@ -83,13 +84,15 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
       if (!(session.families || []).length) host.append(el('p', {}, 'No linked families yet. Create a space below, or open your family with its code and link it in Parent mode.'));
     } else if (available()) host.append(el('h2', {}, 'Parent sign-in (optional)'),
       el('p', {}, 'Already linked your family? Sign in to find it again. You can always continue with a Family Code instead.'),
-      button('Sign in / recover a family', () => signIn(familyCode), 'secondary'));
+      ...(config.google ? [button('Sign in with Google', () => location.assign('/auth/google/start'), 'secondary')] : []),
+      ...(config.email ? [button('Email me a code', () => signIn(familyCode), 'secondary')] : []),
+      button('Forgot your family code?', () => signIn(familyCode), 'quiet'));
   }
   async function recover() {
     const result = await request('recover');
     modal('Recover family codes', el('div', {}, el('p', {}, 'These codes open your family’s practice. Save them privately.'),
       ...(result.families || []).map(family => el('section', {class: 'section'}, el('h3', {}, family.name || 'Family space'),
-        el('strong', {class: 'family-code'}, family.code), button('Open family', () => { document.querySelectorAll('dialog').forEach(d => d.close()); return open(family.hash); }, 'secondary'))),
+        el('strong', {class: 'family-code'}, family.code), button('Print card', () => window.print(), 'secondary'), button('Open family', () => { document.querySelectorAll('dialog').forEach(d => d.close()); return open(family.hash); }, 'secondary'))),
       !(result.families || []).length ? el('p', {}, 'No linked families to recover.') : null));
   }
   function preferences() {
@@ -116,14 +119,16 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
     host.replaceChildren(el('p', {role: 'status'}, 'Loading parent sign-in…'));
     try {
       await load();
-      host.replaceChildren(el('div', {class: 'section-title'}, el('h2', {}, 'Parent sign-in')),
-        el('p', {}, 'Optional for parents; never needed for kid practice. Linking lets this parent sign-in reopen the family without its code or PIN. Keep using your PIN for code-only access.'));
+      host.replaceChildren(el('div', {class: 'section-title'}, el('h2', {}, 'Sign-in & email')),
+        el('p', {}, 'Link an email so you can never lose your family. Optional for parents; never needed for kid practice. Linking lets this parent sign-in reopen the family without its code or PIN. Keep using your PIN for code-only access.'));
       if (!session.signedIn) {
-        host.append(button('Sign in & link this family', () => signIn(current().familyCode, () => manage(host)), 'secondary'));
+        if(config.google) host.append(button('Link Google', () => location.assign('/auth/google/start?' + new URLSearchParams({familyCode:current().familyCode})), 'secondary'));
+        if(config.email) host.append(button('Link an email', () => signIn(current().familyCode, () => manage(host)), 'secondary'));
+        if(!available()) host.append(el('p', {}, 'Optional sign-in is not configured here. Family Code and PIN access always work.'));
       } else {
         host.append(el('p', {}, session.email || 'Signed in'), picker(),
           button('Link this family to my sign-in', async () => {await linkNewFamily(); toast('Family linked.'); await manage(host);}, 'secondary'),
-          button('Recover family codes', recover, 'secondary'), preferences(),
+          button('Recover family codes', recover, 'secondary'), config.email ? preferences() : null,
           button('Sign out', signout, 'secondary'),
           el('details', {}, el('summary', {}, 'Delete parent sign-in'),
             el('p', {}, 'Removes this parent identity, linked access and email preferences. It does not delete family practice data. Save your Family Codes and PINs first.'),
@@ -132,7 +137,6 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
               await request('delete', {}); session = {signedIn: false, families: []}; await refresh(); toast('Parent sign-in deleted. Family data kept.');
             }, 'danger')));
       }
-      if (!session.signedIn) return;
       const result = await request('parents');
       host.append(el('h3', {}, 'Parents linked to this family'),
         el('p', {class: 'muted'}, 'Removing a link removes sign-in access, not a saved Family Code or family data.'),
@@ -147,5 +151,5 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
       host.append(el('p', {role: 'alert'}, err.message), button('Try again', () => manage(host), 'secondary'));
     }
   }
-  return {init, entry, manage, linkNewFamily, signedIn: () => !!session.signedIn, signIn};
+  return {init, finishSignIn, entry, manage, linkNewFamily, signedIn: () => !!session.signedIn, signIn};
 }

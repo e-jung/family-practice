@@ -143,7 +143,7 @@ test('Google state is checked before exchange; PKCE verifier and verified claims
 
 test('Google rejects unverified, expired, wrong audience/issuer, malformed and failed exchange',async t=>{
   const f=fixture(t),{flow}=await oauth(f),base={email:'google@example.com',email_verified:true,sub:'subject',aud:'local-client',iss:'accounts.google.com',exp:Date.now()/1000+600},callback='/auth/google/callback?code=mock&state='+flow.state;
-  for(const override of [{email_verified:false},{email_verified:'true'},{exp:1},{aud:'other'},{iss:'https://evil.example'},{sub:''}]){
+  for(const override of [{email_verified:false},{email_verified:'true'},{exp:undefined},{exp:'not-a-number'},{exp:1},{aud:'other'},{iss:'https://evil.example'},{sub:''}]){
     assert.equal((await f.req(callback,undefined,{},async()=>Response.json({id_token:idToken({...base,...override})}))).status,401);
   }
   assert.equal((await f.req(callback,undefined,{},async()=>Response.json({id_token:'bad'}))).status,401);

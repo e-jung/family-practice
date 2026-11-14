@@ -3,7 +3,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp
 const clean = value => String(value ?? '').replace(/[\r\n]/g, ' ').slice(0, 200);
 export const DEFAULT_EMAIL_FROM = 'Family Practice <spelling@jesklabs.com>';
 
-/** No answers, codes, PINs or word/verse content. Caller supplies aggregate kid summaries. */
+/** Only allowlisted summaries and up to five tricky words; never answers, codes or PINs. */
 export function buildWeeklyDigest({ familyName = 'Your family', kids = [], practiceUrl = '', unsubscribe = '' } = {}) {
   const lines = [`${clean(familyName)} — weekly practice`, '', 'Here is your weekly Family Practice summary.'];
   for (const kid of kids.slice(0, 10)) {
@@ -13,6 +13,9 @@ export function buildWeeklyDigest({ familyName = 'Your family', kids = [], pract
     const accuracy = Number(kid.accuracy ?? kid.firstTryAccuracy);
     const accuracyText = Number.isFinite(accuracy) ? `, ${Math.min(100, Math.max(0, Math.round(accuracy)))}% first-try accuracy` : '';
     lines.push(`${name}: ${attempts} practice attempts${accuracyText}, ${count(kid.streak)}-day streak, ${count(kid.dueWords)} words due for review.`);
+    if (Array.isArray(kid.lists) && kid.lists.length) lines.push(`Lists practiced: ${kid.lists.slice(0,20).map(clean).join(', ')}.`);
+    if (Array.isArray(kid.trickyWords) && kid.trickyWords.length) lines.push(`Tricky words: ${kid.trickyWords.slice(0,5).map(clean).join(', ')}.`);
+    if (Number.isFinite(kid.verseStarsChange)) lines.push(`Verse stars this week: ${kid.verseStarsChange >= 0 ? '+' : ''}${Math.trunc(kid.verseStarsChange)}.`);
   }
   if (!kids.length) lines.push('A little practice together is a good place to start.');
   if (practiceUrl) lines.push('', `Open Family Practice: ${safeLink(practiceUrl)}`);
