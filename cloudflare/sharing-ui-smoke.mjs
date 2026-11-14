@@ -5,7 +5,7 @@ import {mkdir, writeFile} from 'node:fs/promises';
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = new URL(process.env.SMOKE_URL || 'http://localhost:8792').origin;
 if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname)) throw Error('Use disposable localhost only');
-const out = process.argv[2] || '/home/ubuntu/.openclaw/workspace/reports/spelling-app/sharing';
+const out = process.argv[2] || '.tools/sharing-screens';
 await mkdir(out, {recursive:true});
 const browser = await chromium.launch({headless:true, executablePath:process.env.CHROMIUM_PATH || undefined, args:['--no-sandbox']});
 const errors = [], external = [], csp = [], screenshots = [], families = [];
