@@ -9,8 +9,8 @@ Last updated: 2026-11-14
 ## Live
 
 - Hosted instance: https://spelling.jesklabs.com (listed as "spelling" on jesklabs.com; the in-app name is "Family Practice").
-- Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`), and Workers AI for speech. Migrations deployed: `v1`, `v2`.
-- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v7`.
+- Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`), and Workers AI for speech. Migrations deployed: `v1`, `v2`, `v3`.
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v8`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
 - The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
 
@@ -41,7 +41,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 ## Roadmap
 
 **Done on pending branch**
-- Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (not deployed).
+- Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
 **Next up**
@@ -81,12 +81,9 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - **2026-11-13: Parents paste verse text; no Bible API.** *Why:* translation licensing. Samples use public-domain KJV.
 - **2026-11-13: Zero npm runtime dependencies, vanilla JS, no build step.** *Why:* small, auditable, easy for agents and self-hosters.
 
-## Changelog-pending
-
-- `sharing` branch: immutable share links, single-admin class feeds, optional verse import, parent-gated multi-kid imports and follows, source labels, abuse reports, aggregate counters, QR encoder, noindex public pages, MCP sharing tools, and additive ShareStore migration `v3`. Shell `v8`; singleton `SHARES` binding; live migration metadata `old_tag: v2 → new_tag: v3` creates only `ShareStore` (first deployment includes v1+v2+v3). Verification: 118 unit tests; 65 baseline HTTP assertions; 58 real-Worker sharing assertions (actual ten-minute publish interval); 228 sharing UI assertions; existing browser, parent/practice layout and active-PWA share navigation smokes all passed. Prepared locally only; no production deployment or push.
-
 ## Changelog (deploys)
 
+- 2026-11-14 sharing: share links (`/s/…`) and single-admin class lists (`/c/…`) with QR, follows and new-week cards, multi-kid imports with optional verse, MCP `get_shared_list`/`import_shared_list`, reports; ShareStore migration v3 applied; shell v8. Live checks: unknown share/class → 404, share pages `noindex`; core prod smoke passed (53 requests / 64 assertions). Sharing smoke against prod pending (family-creation rate limit). Smokes no longer send `CF-Connecting-IP` to non-localhost targets (Cloudflare rejects it).
 - 2026-11-14 `696881b`: separate Parent page (kid view keeps 3 tabs); mobile parent sheets with pinned Save/Cancel and bounded textarea; MCP connector (per-family bearer connection links, add/read or read-only, 7 tools, revoke; protocol 2025-11-25); pinch/double-tap/auto-zoom and overscroll disabled; invocation URL logging off. Live checks: bogus token → 401, foreign Origin → 403, GET → 405; full prod smoke passed (53 HTTP requests, 64 assertions, including live MCP tools/scopes/revocation).
 - 2026-11-14 `5116a93`: Learn starts straight from the list (intro page removed); stage tabs are tappable to jump between stages (forward jumps logged as skips); bottom "Skip to recall" removed.
 - 2026-11-14 `c6d0989`: Learn stages by length, no demotion, fast-track, skip to recall / start test; Leitner Review + word bank; safe-area practice band; kid-facing voice status removed; smoke cleans up in `finally`.
