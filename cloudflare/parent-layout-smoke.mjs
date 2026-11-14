@@ -130,6 +130,7 @@ try {
     await parentButton.click();
     await page.getByRole('button', {name: 'Done', exact: true}).waitFor();
     await page.locator('header').getByRole('button', {name: 'Lock', exact: true}).click();
+    await page.locator('header').getByRole('button', {name: 'Lock', exact: true}).waitFor({state:'hidden'});
     await page.locator('header').getByRole('button', {name: 'Parent mode', exact: true}).click();
     await page.getByLabel('Parent PIN', {exact:true}).fill(pin);
     await page.getByRole('button', {name:'Unlock', exact:true}).click();
