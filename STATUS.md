@@ -10,7 +10,7 @@ Last updated: 2026-11-14
 
 - Hosted instance: https://spelling.jesklabs.com (listed as "spelling" on jesklabs.com; the in-app name is "Family Practice").
 - Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`), and Workers AI for speech. Migrations deployed: `v1`, `v2`.
-- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v5`.
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v6`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
 - The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
 
@@ -54,6 +54,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
 
+- **2026-11-14: Learn has no intro screen; the stage tabs are the navigation.** Tap any stage to jump to it; a forward jump is recorded as a skip and never credits learning. *Why:* parent testing found the intro page redundant and a separate "Skip to recall" button duplicative once the tabs work.
 - **2026-11-14: Learn stages scale with word length and never demote.** 1–3 letters get 2 stages, 4–5 get 3 and 6+ get 4. A miss shows the word, then retries the same stage. A first-try Fade jumps to Recall. *Why:* parent testing found the fixed 4–5 steps drawn-out and step-backs punitive.
 - **2026-11-14: Spaced repetition uses Leitner boxes (1/2/4/7/14/30 days), not FSRS.** *Why:* weekly spelling lists are small, and "this word is in box 2" is explainable to kids and parents. It is deterministic, cheap to compute in each family DO, and backfilled from history. FSRS suits large card decks.
 - **2026-11-14: Learn mode uses Copy–Cover–Compare and vanishing cues (fading letters).** *Why:* both are evidence-based spelling methods. Learn attempts are tracked separately so test accuracy stays honest.
@@ -70,6 +71,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-14 `5116a93`: Learn starts straight from the list (intro page removed); stage tabs are tappable to jump between stages (forward jumps logged as skips); bottom "Skip to recall" removed.
 - 2026-11-14 `c6d0989`: Learn stages by length, no demotion, fast-track, skip to recall / start test; Leitner Review + word bank; safe-area practice band; kid-facing voice status removed; smoke cleans up in `finally`.
 - 2026-11-14 `fd730f7`: impeccable redesign, on-screen keyboard, key sound + haptics (default on).
 - 2026-11-14: PWA, mobile pass, Learn mode, ops stats, Workers Logs on; repo made public.
