@@ -22,7 +22,7 @@ Last updated: 2026-11-15
 | `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
 | `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
 | `ACCOUNTS_SVC` | Worker service binding → `jesklabs-accounts` / `SpellingClient` | Shared Accounts owns Google/email/SSO; stable subject keys app-local links. |
-| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0`, so **every production deploy must pass `FP_SIGNIN_EMAIL=1`** or email sign-in turns off. Production: `SIGNIN_EMAIL=1` (since 2026-11-15), `SIGNIN_GOOGLE=0` until the first real Google round trip through shared Accounts passes. |
+| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0`, so **a deploy without the switches turns sign-in off**. Production: `SIGNIN_EMAIL=1` and `SIGNIN_GOOGLE=1` (both since 2026-11-15), so **every production deploy must pass both `FP_SIGNIN_EMAIL=1 FP_SIGNIN_GOOGLE=1`**. |
 | `RESEND_API_KEY` | Optional Worker secret (unset in production) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
 | `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin (`https://spellami.jesklabs.com`); self-hosters must override the hosted default. |
 | `LEGACY_HOSTS` | Worker var | Former hostnames that redirect to `APP_ORIGIN` (`spelling.jesklabs.com`); deployer override `FP_LEGACY_HOSTS`, empty disables. |
@@ -44,18 +44,18 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
 6. Push `main`, add a changelog line below, and update "Live" if anything structural changed.
 
-## Optional Jesklabs sign-in (email on, Google off)
+## Optional Jesklabs sign-in (email and Google on)
 
-Deployed 2026-11-14 gated off; email sign-in (and SSO) turned on 2026-11-15: `/api/auth/config` reports `email:true, google:false, sso:true`, and Google start returns 404. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. No accounts required: Family Code/PIN use is unchanged and child accounts remain prohibited.
+Deployed 2026-11-14 gated off; email sign-in (and SSO) and then Google turned on 2026-11-15: `/api/auth/config` reports `email:true, google:true, sso:true`. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. No accounts required: Family Code/PIN use is unchanged and child accounts remain prohibited.
 
 Shared Jesklabs Accounts owns Google, email codes and SSO through the `SpellingClient` service binding; this app never sends sign-in mail or talks to Google itself. AccountStore (migration `v4`, unchanged) keeps subject-keyed sessions, family links, preferences and delivery claims; client responses use purpose-bound HMAC refs, never raw subjects. Pending email links are short-lived, HMAC-email-keyed and browser-bound; session and SSO-pending cookies encrypt identity data. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders via this Worker's Resend key (notifications only, hourly cron). Deleting sign-in removes this app's link; shared Accounts deletes its user only when no other app links remain. Unlinked lost codes cannot be recovered.
 
-To turn on Google: redeploy with `FP_SIGNIN_EMAIL=1 FP_SIGNIN_GOOGLE=1` after the first real Google sign-in through shared Accounts passes. Real Google, SSO across apps and physical iOS behavior are unverified until then; Google's consent screen currently names the shared OAuth app "Incord".
+Google was enabled after the first real Google round trip through shared Accounts passed (from Incord). A real Google sign-in into Spellami itself, SSO across apps and physical iOS behavior are still unverified. Google's consent screen names the shared OAuth app "Jesklabs".
 
 ## Roadmap
 
 **Done**
-- Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email sign-in on 2026-11-15, Google pending).
+- Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email and Google sign-in on 2026-11-15).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
@@ -111,6 +111,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-15 Google sign-in on (no code change, shell v14): redeployed with `FP_SIGNIN_EMAIL=1 FP_SIGNIN_GOOGLE=1` after Incord's real prod Google round trip through Accounts passed. Live: config `email:true, google:true, sso:true`; Google start 302s to Accounts `/authorize?client=spelling&provider=google` with the registered callback, and Accounts 303s to Google with the `accounts.jesklabs.com/oauth/google/callback` redirect; SSO start unchanged. A real Google sign-in into Spellami is not yet exercised.
 - 2026-11-15 email sign-in on (`ceb9192`, no code change, shell v14): redeployed with `FP_SIGNIN_EMAIL=1`, Google still `0`. Live: config `email:true, google:false, sso:true`; SSO start 302s to Accounts `/authorize` with the registered callback; Google start 404. Real end-to-end email check against prod: code sent by shared Accounts from `Spellami <hello@jesklabs.com>` landed in a Gmail inbox, verify issued a session and an SSO attach URL, a throwaway family was created, linked (parents list shows the masked email), recovered and opened from an account-only cookie jar (code matched), then deleted (link cleaned up) and the sign-in deleted. Parent Lock signs the account out too, by design.
 - 2026-11-15 shared sender (`5be41ee`), shell unchanged (v14): `EMAIL_FROM` is now `Spellami <hello@jesklabs.com>`, the one sender all Jesklabs apps share (display name per app); jesklabs.com is verified in Resend. Local: 166/166 tests, dry-run clean. Live: Worker var reads the new sender, sign-in gates still off, app and shell v14 served. Config-only change, so the full prod smoke was not rerun.
 - 2026-11-15 Spellami rename (`b9401f0`), shell v14: app renamed from Family Practice to Spellami everywhere users see it (manifest name/short_name, titles, header, copy, emails, MCP server name, backup filenames). Canonical origin `https://spellami.jesklabs.com` (new Workers Custom Domain on the same Worker); `spelling.jesklabs.com` is a `LEGACY_HOSTS` entry: pages 301 with path/query, `/mcp` served in place (fetch drops Authorization on cross-origin redirects), old APIs 410, `/sw.js` a 200 handoff worker that sends a device's saved Family Code to `/f/<code>` and unregisters. Sender `Spellami <spellami@jesklabs.com>`; shared Accounts' `spelling` client now registers the Spellami callback and sender (client id unchanged). GitHub repo renamed to `e-jung/spellami`. Local: 166/166 tests, API smoke 65 assertions / 53 requests, UI 2 journeys, new two-origin `legacy-smoke.mjs` 13 checks in Chromium; Sol review found a stale callback constant and a deep-link loss in the handoff, both fixed before deploy. Live: old host 301/200 sw.js/410 api/401 mcp as designed, new host serves v14 with Spellami manifest and title, sign-in gates still off, Accounts accepts only the new callback, prod smoke against spellami.jesklabs.com 64 assertions / 53 requests passed. iOS standalone PWA handoff is unverified (Chromium only).
