@@ -22,7 +22,7 @@ Last updated: 2026-11-15
 | `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
 | `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
 | `ACCOUNTS_SVC` | Worker service binding → `jesklabs-accounts` / `SpellingClient` | Shared Accounts owns Google/email/SSO; stable subject keys app-local links. |
-| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0` . Production: `SIGNIN_EMAIL=1` (since 2026-11-15), `SIGNIN_GOOGLE=0` until the first real Google round trip through shared Accounts passes. |
+| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0`, so **every production deploy must pass `FP_SIGNIN_EMAIL=1`** or email sign-in turns off. Production: `SIGNIN_EMAIL=1` (since 2026-11-15), `SIGNIN_GOOGLE=0` until the first real Google round trip through shared Accounts passes. |
 | `RESEND_API_KEY` | Optional Worker secret (unset in production) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
 | `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin (`https://spellami.jesklabs.com`); self-hosters must override the hosted default. |
 | `LEGACY_HOSTS` | Worker var | Former hostnames that redirect to `APP_ORIGIN` (`spelling.jesklabs.com`); deployer override `FP_LEGACY_HOSTS`, empty disables. |
@@ -55,7 +55,7 @@ To turn on Google: redeploy with `FP_SIGNIN_EMAIL=1 FP_SIGNIN_GOOGLE=1` after th
 ## Roadmap
 
 **Done**
-- Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14, gated off).
+- Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email sign-in on 2026-11-15, Google pending).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
