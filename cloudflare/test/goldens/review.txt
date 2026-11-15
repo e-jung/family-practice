@@ -1,11 +1,11 @@
-Family Practice — Example family
+Spellami — Example family
 
 4 words ready for review
 
 A little practice goes a long way.
 4 words are ready for review.
 
-Open Family Practice: https://example.test/
-You’re receiving this because you opted in to review nudges in Family Practice.
+Open Spellami: https://example.test/
+You’re receiving this because you opted in to review nudges in Spellami.
 Manage email preferences: https://example.test/
 Unsubscribe: https://example.test/auth/unsubscribe?token=example&test=1

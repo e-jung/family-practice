@@ -42,7 +42,7 @@ Built by a parent for his own kids and shared free (MIT). No ads or analytics: a
 
 ## Brand Commitments
 
-- Name: Family Practice. Hosted at spelling.jesklabs.com.
+- Name: Spellami (spell + French *ami*: a spelling friend; renamed from Family Practice 2026-11-15). Hosted at spellami.jesklabs.com; the old spelling.jesklabs.com redirects.
 - Voice (brief): warm, calm, focused, trustworthy. Christian-friendly but not churchy. Not childish or cartoony, and not corporate SaaS.
 - Encouraging copy that treats mistakes as part of learning ("Almost. Listen once more").
 - Sister app Incord (also the maintainer's, MIT) sets the expectation for on-screen keyboard feel, key sounds, and haptics (brief).

@@ -152,7 +152,7 @@ test('QR rejects oversize or nonstring input rather than truncating', () => {
 
 test('empty, URL, Unicode and markup payloads produce deterministic independent matrices', () => {
   // All four were independently decoded with jsQR during development.
-  for (const text of ['', 'https://spelling.jesklabs.com/s/AbCdEf0123456789', 'é🍃 Bible verses — 漢字', '<script>alert("&")</script>']) {
+  for (const text of ['', 'https://spellami.jesklabs.com/s/AbCdEf0123456789', 'é🍃 Bible verses — 漢字', '<script>alert("&")</script>']) {
     assert.deepEqual(qrMatrix(text), qrMatrix(text));
     const first = qrMatrix(text); first[0][0] = !first[0][0];
     assert.notDeepEqual(first, qrMatrix(text), 'callers cannot mutate a cached result');

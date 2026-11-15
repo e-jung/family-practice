@@ -140,13 +140,13 @@ export function createSharingUI(ctx) {
     try{
       const result=await publicApi(endpoint(kind,slug));
       const content=result.share || result.class || result;
-      document.title=(content.name || content.title || 'Shared practice')+' · Family Practice';
+      document.title=(content.name || content.title || 'Shared practice')+' · Spellami';
       if(kind==='s')body.replaceChildren(showWords(content),el('div',{class:'row'},button('Add to my family',()=>importContent(kind,slug,content)),button('Report this link',()=>report(kind,slug),'quiet')));
       else {
         body.replaceChildren(...[el('h2',{},content.name),el('p',{},'Weekly practice, shared by a parent. Follow to see new weeks; a parent chooses what to add.'),el('div',{class:'row'},button('Follow class list',()=>requireParent(()=>chooseKids('Follow class list',content,async payload=>{await api('/api/admin/follows',{slug,...payload});toast('Following this class list.');},true)))),el('div',{class:'rows'},(content.weeks||result.weeks||[]).map(w=>el('article',{class:'shared-week'},showWords(w),button('Add this week',()=>importContent('c',slug,w),'secondary')))),!(content.weeks||result.weeks||[]).length?el('p',{},'No weeks published yet.'):null,button('Report this link',()=>report(kind,slug),'quiet')].filter(Boolean));
       }
-      body.append(el('p',{class:'muted'},'No accounts, ads, or tracking. Shared links never expose kids or family progress.'),el('a',{href:'/'},'Go to Family Practice'));
-    }catch(err){body.replaceChildren(el('h2',{},'This link is not available'),el('p',{role:'alert'},err.message),el('a',{href:'/'},'Go to Family Practice'));}
+      body.append(el('p',{class:'muted'},'No accounts, ads, or tracking. Shared links never expose kids or family progress.'),el('a',{href:'/'},'Go to Spellami'));
+    }catch(err){body.replaceChildren(el('h2',{},'This link is not available'),el('p',{role:'alert'},err.message),el('a',{href:'/'},'Go to Spellami'));}
   }
   async function newWeeks(host,kidId) {
     try {

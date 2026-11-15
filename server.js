@@ -900,7 +900,7 @@ if (
   const app = createApp();
   const port = Number(process.env.PORT || 8088);
   app.server.listen(port, process.env.HOST || "0.0.0.0", () =>
-    console.log(`Family Practice listening on port ${port}`),
+    console.log(`Spellami listening on port ${port}`),
   );
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => app.close().then(() => process.exit(0)));

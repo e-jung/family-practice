@@ -26,11 +26,11 @@ function updateInstallHint() {
   const hint = document.createElement('p');
   hint.textContent = ios
     ? 'On iPhone or iPad, open this page in Safari. Tap Share, then Add to Home Screen (you may need to choose More first).'
-    : 'Install Family Practice for a home-screen shortcut. If no install button appears, use your browser menu and choose Install app or Add to Home screen.';
+    : 'Install Spellami for a home-screen shortcut. If no install button appears, use your browser menu and choose Install app or Add to Home screen.';
   section.append(hint);
   const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'An internet connection is still needed to load family data and save practice. Save your family code before changing devices or browsers.'; section.append(note);
   if (installPrompt) {
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Install Family Practice';
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Install Spellami';
     button.addEventListener('click', async () => {
       const prompt = installPrompt; if (!prompt) return;
       button.disabled = true;

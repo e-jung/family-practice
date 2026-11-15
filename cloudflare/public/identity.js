@@ -45,7 +45,7 @@ export function createIdentityUI({el, button, field, input, modal, toast, curren
       finally { accept.disabled = decline.disabled = false; }
     }, 'secondary');
     dialog = modal('Continue with Jesklabs?', el('div', {}, el('p', {}, disclosure),
-      el('p', {}, 'You are signed in to Jesklabs as ' + pending.email + '. Continue to Family Practice on this device?'),
+      el('p', {}, 'You are signed in to Jesklabs as ' + pending.email + '. Continue to Spellami on this device?'),
       el('p', {class: 'muted'}, 'No account is required. You can close this and use your Family Code instead.'),
       error, el('div', {class: 'identity-actions'}, accept, decline)));
   }

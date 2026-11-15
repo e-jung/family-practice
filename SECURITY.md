@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please use [GitHub private vulnerability reporting](https://github.com/e-jung/family-practice/security/advisories/new) (repository **Security → Advisories → Report a vulnerability**).
+Please use [GitHub private vulnerability reporting](https://github.com/e-jung/spellami/security/advisories/new) (repository **Security → Advisories → Report a vulnerability**).
 
 Do not open public issues containing vulnerabilities, credentials, Family Codes, or real family data. Include the affected build/version, reproduction steps using fictional data, impact, and any suggested fix. Keep reports private while a fix is coordinated.
 

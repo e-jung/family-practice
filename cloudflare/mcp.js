@@ -105,7 +105,7 @@ export async function handleMcp(request,sql,run) {
  const ok=result=>json({jsonrpc:'2.0',id:call.id,result});
  if(call.method==='initialize') {
   if(typeof call.params?.protocolVersion!=='string'||!call.params.capabilities||typeof call.params.capabilities!=='object'||Array.isArray(call.params.capabilities)||!call.params.clientInfo||typeof call.params.clientInfo.name!=='string'||typeof call.params.clientInfo.version!=='string')return error(call.id,-32602,'Invalid initialize parameters');
-  return ok({protocolVersion:versions.includes(call.params.protocolVersion)?call.params.protocolVersion:MCP_VERSION,capabilities:{tools:{listChanged:false}},serverInfo:{name:'Family Practice',version:'1.0.0'},instructions:'Family-scoped parent-managed practice. Supply verse wording yourself. No deletion or account tools.'});
+  return ok({protocolVersion:versions.includes(call.params.protocolVersion)?call.params.protocolVersion:MCP_VERSION,capabilities:{tools:{listChanged:false}},serverInfo:{name:'Spellami',version:'1.0.0'},instructions:'Family-scoped parent-managed practice. Supply verse wording yourself. No deletion or account tools.'});
  }
  if(call.method==='ping')return ok({});
  if(call.method==='tools/list')return ok({tools:MCP_TOOLS.filter(t=>connection.scope==='add-read'||!writable(t.name))});

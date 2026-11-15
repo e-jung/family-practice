@@ -1,4 +1,4 @@
-# Design: Family Practice (Cloudflare PWA)
+# Design: Spellami (Cloudflare PWA)
 
 World: **seed packets**. Every section is a flat printed band of colour; lists and verses are packets with their name set big; a child's practice screen is a focused desk. Source of truth: `cloudflare/public/style.css` tokens. Direction contract: `.impeccable/surfaces/cloudflare-public-index-html.md`.
 

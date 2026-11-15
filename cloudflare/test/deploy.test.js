@@ -28,6 +28,9 @@ try {
   assert.deepEqual(dryRun.metadata_if_live_v3.migrations, {old_tag:'v3',new_tag:'v4',steps:[{new_sqlite_classes:['AccountStore']}]});
   assert.equal(dryRun.metadata_if_live_v4.migrations, undefined);
   assert.deepEqual(dryRun.metadata_if_live_v4.bindings.find(b=>b.name==='ACCOUNTS_SVC'),{type:'service',name:'ACCOUNTS_SVC',service:'jesklabs-accounts',entrypoint:'SpellingClient'});
+  assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name==='APP_ORIGIN').text,'https://spellami.jesklabs.com');
+  assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name==='LEGACY_HOSTS').text,'spelling.jesklabs.com');
+  assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/legacy.js'));
   for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name===name).text,'0');
   const enabled=metadataFor(plan,'jwt','v4',{FP_SIGNIN_EMAIL:'1',FP_SIGNIN_GOOGLE:'1'});for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(enabled.bindings.find(b=>b.name===name).text,'1');
   assert.deepEqual(dryRun.schedules, [{cron:'0 * * * *'}]);

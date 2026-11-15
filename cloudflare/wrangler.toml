@@ -66,8 +66,9 @@ entrypoint = "SpellingClient"
 [vars]
 SIGNIN_EMAIL = "0"
 SIGNIN_GOOGLE = "0"
-APP_ORIGIN = "https://spelling.jesklabs.com"
-EMAIL_FROM = "Family Practice <spelling@jesklabs.com>"
+APP_ORIGIN = "https://spellami.jesklabs.com"
+LEGACY_HOSTS = "spelling.jesklabs.com"
+EMAIL_FROM = "Spellami <spellami@jesklabs.com>"
 
 [triggers]
 crons = ["0 * * * *"]

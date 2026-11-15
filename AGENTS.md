@@ -1,10 +1,12 @@
-# AGENTS.md — Family Practice
+# AGENTS.md — Spellami
 
 Read this before changing the project. Update this file when architecture or product constraints change. Project state, deploy/config, roadmap, decisions and changelog live in `STATUS.md`; update it in the same commit as any release, decision or roadmap change. `CLAUDE.md` is a symlink to this file; preserve it.
 
 ## Product and privacy
 
-Family Practice helps families practice weekly spelling lists, memorize parent-provided Bible verses, and review progress. Built by a parent for his own kids; the hosted instance is https://spelling.jesklabs.com.
+Spellami (spell + French *ami*, "spelling friend") helps families practice weekly spelling lists, memorize parent-provided Bible verses, and review progress. Built by a parent for his own kids; the hosted instance is https://spellami.jesklabs.com.
+
+The app was called Family Practice until 2026-11-15. Internal identifiers keep that name on purpose: the Worker `family-practice` (its Durable Object namespaces hold all family data), `family-practice-*` storage keys and cache prefixes, and the shared Accounts client id `spelling` / `SpellingClient` (pairwise subjects derive from it). Never rename those. The old hosted hostname `spelling.jesklabs.com` stays bound to the same Worker as a `LEGACY_HOSTS` entry (`cloudflare/legacy.js`): pages 301 and `/mcp` 308 to `APP_ORIGIN`, old APIs return 410, and `/sw.js` stays a 200 handoff service worker that forwards a device's saved Family Code to the new origin's `/f/<code>` join page and then unregisters. Keep that hostname attached and the handoff in place indefinitely; printed codes, QR class links and installed PWAs point at it.
 
 - Spelling: word → sentence → word, one retry, letter-by-letter reveal, missed-word rounds, and cross-list tricky words.
 - Verses: read/listen, progressive blanks, first letters, memory typing, and reference quiz. Mastery is tied to the current wording.

@@ -1,4 +1,4 @@
-# Family Practice — public multi-family Worker
+# Spellami — public multi-family Worker
 
 The public build lives in `cloudflare/` and `cloudflare/public/`. The independent
 single-family Node/Docker LAN build (`server.js`, `public/`) remains working and
@@ -187,8 +187,9 @@ build. Before a future authorized deployment, provide:
 | `ACCOUNTS_SVC` | Optional Worker service binding to shared Accounts; required when enabling sign-in |
 | `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment switches (`1` to enable); map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`, default `0` |
 | `RESEND_API_KEY` | Optional Resend API key for opted-in notifications only |
-| `APP_ORIGIN` | Canonical HTTPS app origin used for notification links and auth callbacks; default `https://spelling.jesklabs.com`; self-hosters must override |
-| `EMAIL_FROM` | Sender var; default `Family Practice <spelling@jesklabs.com>`; use your verified domain |
+| `APP_ORIGIN` | Canonical HTTPS app origin used for notification links and auth callbacks; default `https://spellami.jesklabs.com`; self-hosters must override |
+| `LEGACY_HOSTS` | Comma-separated former hostnames bound to this Worker that redirect to `APP_ORIGIN` (`cloudflare/legacy.js`); uploader default `spelling.jesklabs.com`, override with `FP_LEGACY_HOSTS` (empty disables) |
+| `EMAIL_FROM` | Sender var; default `Spellami <spellami@jesklabs.com>`; use your verified domain |
 
 **`PARENT_PIN` is not used or required.** Each parent chooses their own PIN.
 Generate the two secrets locally (e.g. 32 random bytes encoded as hex), save them
@@ -317,7 +318,7 @@ step to test/0; invalid imported mode/step values are rejected.
 Code/PIN-only families remain fully usable without an account. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use.
 
 Identity belongs to the separate Accounts service at `https://accounts.jesklabs.com`.
-Configure `ACCOUNTS_SVC` as a Worker service binding to `jesklabs-accounts`, entrypoint `SpellingClient`. For the uploader, explicitly set `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1`; these become Worker vars `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`. For Wrangler set those Worker vars directly. All default to `0`; SSO is available when either provider is enabled. The registered production callback is exactly `https://spelling.jesklabs.com/auth/jesklabs/callback`; only localhost development uses the request origin. Self-hosters must adapt the app callback constant and arrange a compatible shared service/client registration or leave sign-in off. Do not configure a Google client or Resend authentication key in Family Practice: Accounts owns Google OAuth, email codes and shared SSO. The app’s `/api/auth/config` returns `{email,google,sso}` availability.
+Configure `ACCOUNTS_SVC` as a Worker service binding to `jesklabs-accounts`, entrypoint `SpellingClient`. For the uploader, explicitly set `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1`; these become Worker vars `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`. For Wrangler set those Worker vars directly. All default to `0`; SSO is available when either provider is enabled. The registered production callback is exactly `https://spellami.jesklabs.com/auth/jesklabs/callback`; only localhost development uses the request origin. Self-hosters must adapt the app callback constant and arrange a compatible shared service/client registration or leave sign-in off. Do not configure a Google client or Resend authentication key in Spellami: Accounts owns Google OAuth, email codes and shared SSO. The app’s `/api/auth/config` returns `{email,google,sso}` availability.
 
 `POST /api/auth/start` accepts `{mode:'google'|'sso',familyCode?}` and returns `{url}` with a flow cookie. Family codes travel only in JSON, never redirect queries. `GET /auth/jesklabs/start?mode=google|sso` supports a code-free entry. Callback redirects to `/?auth=confirm|signin|error`. Sign-in entry tries SSO first; `confirm` fetches the masked pending email and asks explicitly before `POST /api/auth/confirm` creates a local session. Choosing a different account calls `/api/auth/decline` and opens the regular Google/email sheet. Successful email verification returns `{ok:true,attachUrl}` and the browser immediately follows it to attach shared SSO. Normal signout clears only app cookies. The separate “Sign out of all Jesklabs apps on this device” option clears app cookies before navigating to `https://accounts.jesklabs.com/sso/logout?client=spelling&return=/`.
 

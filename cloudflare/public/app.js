@@ -1332,7 +1332,7 @@ async function assistantControls() {
       const url = location.origin + "/mcp/t/" + result.token;
       shown.replaceChildren(el("h3", {}, "Save this connection link now"), el("p", {}, "Shown only once. It cannot be retrieved after you leave this page."),
         el("p", { class: "connection-url" }, url), button("Copy connection URL", async () => { await navigator.clipboard.writeText(url); toast("Connection URL copied. Keep it private."); }, "secondary"),
-        el("p", {}, "Claude Code command"), el("pre", { class: "connection-url" }, `claude mcp add --transport http family-practice ${url}`));
+        el("p", {}, "Claude Code command"), el("pre", { class: "connection-url" }, `claude mcp add --transport http spellami ${url}`));
       name.value = ""; await refresh();
     } catch (err) { error.textContent = err.message; }
     finally { create.disabled = false; }
@@ -1389,7 +1389,7 @@ async function downloadBackup(format) {
     throw Error(body.error || "Could not download backup.");
   }
   const url = URL.createObjectURL(await r.blob());
-  const a = el("a", { href: url, download: "family-practice." + format });
+  const a = el("a", { href: url, download: "spellami." + format });
   document.body.append(a);
   a.click();
   a.remove();
@@ -1405,7 +1405,7 @@ function clearView() {
 }
 function familyControls() {
   return el("div", { class: "section" },
-    el("div", { class: "section-title" }, el("h2", {}, "Your family space"), el("span", { class: "muted" }, state.family?.name || "Family Practice")),
+    el("div", { class: "section-title" }, el("h2", {}, "Your family space"), el("span", { class: "muted" }, state.family?.name || "Spellami")),
     el("p", {}, "Your family code opens practice on another device. The parent PIN protects settings and backups. Keep both safe. Optional Parent sign-in can recover a linked family’s code; it does not recover your PIN."),
     el("div", { class: "row" },
       button("Save your family code", codeCard, "secondary"),
@@ -1470,7 +1470,7 @@ function codeCard() {
     el("p", { class: "notice" }, "Save this code — it always opens your family’s practice. Write it down or copy it. Optional Parent sign-in can recover codes for linked families."),
     el("p", { class: "muted" }, "Family code"), el("strong", { class: "family-code" }, familyCode),
     el("p", { class: "join-url" }, joinURL),
-    el("p", {}, "Open Family Practice on another device and enter this code, or use the link above. Anyone with the code can view and use your family’s practice. Share it only with trusted family members."),
+    el("p", {}, "Open Spellami on another device and enter this code, or use the link above. Anyone with the code can view and use your family’s practice. Share it only with trusted family members."),
     el("p", {}, "Your parent PIN is separate. It is not printed on this card. Keep the PIN safe: there is no email-based recovery."),
     el("p", { class: "muted no-print" }, "Keep this card somewhere private."),
     el("div", { class: "row" },
@@ -1577,7 +1577,7 @@ function privacy() {
   app.dataset.tone = "parent";
   app.append(el("section", { class: "section prose" },
     el("h1", {}, "Privacy & your family’s data"),
-    el("p", {}, "Family Practice stores the profiles, spelling lists, Bible verses, practice answers, progress, and voice settings your family enters. Use first names or nicknames, not full names, school names, addresses, or other sensitive details."),
+    el("p", {}, "Spellami stores the profiles, spelling lists, Bible verses, practice answers, progress, and voice settings your family enters. Use first names or nicknames, not full names, school names, addresses, or other sensitive details."),
     el("h2", {}, "Your code is a key"),
     el("p", {}, "No tracking, no analytics, and no ads. You can delete your family anytime. Anyone with your family code can open your family’s practice and view its profiles and progress. It is not a public username. Share the code and join link privately with trusted family members only. Your parent PIN protects management actions, backups, and deletion; it does not hide practice from someone who knows your code."),
     el("h2", {}, "Shared lists and class links"),

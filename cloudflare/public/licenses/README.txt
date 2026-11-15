@@ -1,4 +1,4 @@
-Third-party assets shipped with Family Practice
+Third-party assets shipped with Spellami
 
 fonts/practice-reader-*.woff2
   "Practice Reader" is a Modified Version of Andika 6.101 by SIL International,

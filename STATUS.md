@@ -1,14 +1,14 @@
 # STATUS.md: project state, roadmap, decisions
 
-The durable, non-code record for Family Practice: what's live, how it's run, what's next, and why things are the way they are. `AGENTS.md` covers how the code works; `PRODUCT.md` and `DESIGN.md` cover product truth and the visual system.
+The durable, non-code record for Spellami (named Family Practice until 2026-11-15): what's live, how it's run, what's next, and why things are the way they are. `AGENTS.md` covers how the code works; `PRODUCT.md` and `DESIGN.md` cover product truth and the visual system.
 
 **Keep this current.** Any change that ships, any decision made, or any roadmap shift updates this file in the same commit. Write current truth; replace stale lines instead of appending. This repo is public: never put credentials, account IDs, family codes, real children's names, private network addresses or personal infrastructure details here.
 
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 ## Live
 
-- Hosted instance: https://spelling.jesklabs.com (listed as "spelling" on jesklabs.com; the in-app name is "Family Practice").
+- Hosted instance: https://spellami.jesklabs.com (listed as "spellami" on jesklabs.com). The former https://spelling.jesklabs.com stays attached to the same Worker as a legacy host: pages 301 (path and query kept), `/mcp` 308, old APIs 410, and its `/sw.js` hands a device's saved Family Code to `/f/<code>` on the new origin, then unregisters.
 - Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`, `ShareStore`, `AccountStore`), and Workers AI for speech. Migrations deployed: `v1`–`v4`; hourly notification cron configured.
 - Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v13`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
@@ -22,13 +22,14 @@ Last updated: 2026-11-14
 | `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
 | `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
 | `ACCOUNTS_SVC` | Worker service binding → `jesklabs-accounts` / `SpellingClient` | Shared Accounts owns Google/email/SSO; stable subject keys app-local links. |
-| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0` (both `0` in production). Enable only once shared Accounts can send Family Practice mail / complete Google. |
+| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0` (both `0` in production). Enable only once shared Accounts can send Spellami mail / complete Google. |
 | `RESEND_API_KEY` | Optional Worker secret (unset in production) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
-| `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin; self-hosters must override the hosted default. |
-| `EMAIL_FROM` | Worker var | Default `Family Practice <spelling@jesklabs.com>`; self-hosters must configure their verified sender. |
+| `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin (`https://spellami.jesklabs.com`); self-hosters must override the hosted default. |
+| `LEGACY_HOSTS` | Worker var | Former hostnames that redirect to `APP_ORIGIN` (`spelling.jesklabs.com`); deployer override `FP_LEGACY_HOSTS`, empty disables. |
+| `EMAIL_FROM` | Worker var | Default `Spellami <spellami@jesklabs.com>`; self-hosters must configure their verified sender. |
 | `TTS_SPEAKER` | Worker var (optional) | Aura-1 speaker; default `asteria`. |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | Deployer environment only | Token needs Workers Scripts edit (+ zone Workers Routes/DNS for the custom domain). Never a Worker binding. |
-| Custom domain | Workers Custom Domains | Attached once; `deploy.mjs` does not manage routes. `workers_dev = false`. |
+| Custom domains | Workers Custom Domains | `spellami.jesklabs.com` (canonical) and `spelling.jesklabs.com` (legacy), both on this Worker; attached once, `deploy.mjs` does not manage routes. Keep the legacy domain attached: printed codes, class QR codes and installed PWAs point at it. `workers_dev = false`. |
 
 MCP connections need no new secrets, bindings, accounts or registry migration. Their rows and request/write counters live in the existing family DO. Connection tokens survive PIN changes; revoke explicitly.
 
@@ -37,7 +38,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 ## Release checklist
 
 1. `node --test` (all green).
-2. Local Worker (`cloudflare/deploy.md` → "Local real Worker"), then `node cloudflare/smoke.mjs`, `node cloudflare/ui-smoke.mjs`, and for layout changes `node cloudflare/practice-layout-smoke.mjs`.
+2. Local Worker (`cloudflare/deploy.md` → "Local real Worker"), then `node cloudflare/smoke.mjs`, `node cloudflare/ui-smoke.mjs`, for layout changes `node cloudflare/practice-layout-smoke.mjs`, and for `legacy.js`/`sw.js` changes `node cloudflare/legacy-smoke.mjs` (starts its own Worker twice).
 3. Bump `VERSION` in `cloudflare/public/sw.js` for any shell change.
 4. `node cloudflare/deploy.mjs --dry-run`, then deploy with credentials.
 5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
@@ -49,7 +50,7 @@ Deployed 2026-11-14 with both `SIGNIN_*` gates `0`: `/api/auth/config` reports `
 
 Shared Jesklabs Accounts owns Google, email codes and SSO through the `SpellingClient` service binding; this app never sends sign-in mail or talks to Google itself. AccountStore (migration `v4`, unchanged) keeps subject-keyed sessions, family links, preferences and delivery claims; client responses use purpose-bound HMAC refs, never raw subjects. Pending email links are short-lived, HMAC-email-keyed and browser-bound; session and SSO-pending cookies encrypt identity data. Linked accounts provide recovery and opt-in weekly summaries, class updates and review reminders via this Worker's Resend key (notifications only, hourly cron). Deleting sign-in removes this app's link; shared Accounts deletes its user only when no other app links remain. Unlinked lost codes cannot be recovered.
 
-To turn on: redeploy with `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1` once shared Accounts can deliver Family Practice codes / complete Google. Real email delivery, Google, SSO across apps and physical iOS behavior are unverified until then.
+To turn on: redeploy with `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1` once shared Accounts can deliver Spellami codes / complete Google. Real email delivery, Google, SSO across apps and physical iOS behavior are unverified until then.
 
 ## Roadmap
 
@@ -68,14 +69,15 @@ To turn on: redeploy with `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1` once s
 - A "daily practice" home: review due words, then the current list, then a verse, in one tap.
 - Backups: a gentle reminder to export, or optional encrypted cloud backup without collecting identity.
 - Multi-admin classroom/roster/school-account mode: **not planned**. Single-admin class-list publishing is the deliberately limited sharing feature (see decisions).
-- Rename in-app branding to match "spelling" on jesklabs.com: undecided.
 
 ## Decisions
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
 
-- **2026-11-15: App icon is the "Letter tile".** A letter tile plus sound waves says "hear it, spell it" and stays readable at 32px. The letter is the app's own Practice Reader Bold single-storey "a" (the form early readers see in practice), not the double-storey "a" of the concept mockup. The app name is unchanged for now; the icon carries no name.
-- **2026-11-14: Shared Jesklabs Accounts, not per-app identity providers.** Accounts owns Google, email-code authentication and shared SSO; Family Practice owns subject-keyed sessions, family links and opt-in notifications. SSO always asks explicit confirmation with a masked account before creating a local session; a different-account action clears pending state. No accounts required, no child identity, no Family Codes in auth redirect URLs. Resend here is notifications-only, all sign-in flags default off, and local deletion removes this app link (and the shared account if it has no other app links). This supersedes the per-app provider setup in the earlier optional identity decision.
+- **2026-11-15: The app is Spellami, at spellami.jesklabs.com.** Spell + French *ami*: a spelling friend. Replaces "Family Practice", which never matched the "spelling" listing, and "Spellwell", an existing trademarked spelling curriculum; no app or trademark uses Spellami. Internal identifiers (Worker `family-practice`, storage keys, the Accounts client id `spelling`) keep their names because renaming them would orphan family data or change account subjects. The old hostname stays on the same Worker rather than a separate redirect Worker, so there is no route-swap gap, and it hands each device's saved Family Code to the new origin's existing `/f/<code>` join page instead of making families retype it. Sender moves to `spellami@jesklabs.com` (nothing was verified for the old address yet).
+
+- **2026-11-15: App icon is the "Letter tile".** A letter tile plus sound waves says "hear it, spell it" and stays readable at 32px. The letter is the app's own Practice Reader Bold single-storey "a" (the form early readers see in practice), not the double-storey "a" of the concept mockup. The icon carries no name.
+- **2026-11-14: Shared Jesklabs Accounts, not per-app identity providers.** Accounts owns Google, email-code authentication and shared SSO; Spellami owns subject-keyed sessions, family links and opt-in notifications. SSO always asks explicit confirmation with a masked account before creating a local session; a different-account action clears pending state. No accounts required, no child identity, no Family Codes in auth redirect URLs. Resend here is notifications-only, all sign-in flags default off, and local deletion removes this app link (and the shared account if it has no other app links). This supersedes the per-app provider setup in the earlier optional identity decision.
 - **2026-11-14: MCP links never embed a reversible family identifier.** Bare SHA-256 of the ~46-bit Family Code permits offline guessing. New fpc2 links encrypt/authenticate routing with AES-GCM under a purpose-derived SESSION_SECRET key; old fp links are retired, not grandfathered. Parent lists retired links for revocation/replacement. Account response family references and PIN cookie bindings use purpose-bound HMAC; stable secrets remain required.
 - **2026-11-14: Optional parent identity, never kid accounts.** Google and emailed-code sign-in may link existing families and recover linked codes. Code/PIN-only access remains supported. Verified parent email is allowed only for account features and opt-in summaries/notifications; unlinked lost codes still have no recovery. This supersedes the earlier blanket no-email/no-login decision.
 - **2026-11-14: Share links, not a public library.** Owner-approved bearer links carry immutable spelling snapshots with sentences and an optional parent-selected verse; never identity or progress. Links never expire unless the owner stops them. Imported copies remain independent.

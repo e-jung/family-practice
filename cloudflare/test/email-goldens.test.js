@@ -15,7 +15,7 @@ for(const [name,message] of Object.entries(examples))test(`${name} email HTML an
  assert.match(message.html,/role="presentation"/);
  assert.match(message.html,/#2446A8/);
  assert.doesNotMatch(message.html,/<style|<script|<img|<link|@import|url\(/i);
- assert.match(message.html,/Open Family Practice<\/a>/);
+ assert.match(message.html,/Open Spellami<\/a>/);
  assert.match(message.html,/Manage email preferences<\/a>/);
  assert.match(message.html,/Unsubscribe<\/a>/);
  assert.match(message.text,name==='weekly' ? /You're receiving this because you turned on weekly summaries\./ : /You’re receiving this because you opted in/);

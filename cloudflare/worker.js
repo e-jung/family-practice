@@ -5,6 +5,7 @@ import {shareRequest,validSlug} from './sharing.js';
 export {ShareStore} from './sharing.js';
 import {routeToken,decryptRoute,retiredToken,RETIRED_LINK} from './mcp.js';
 import { tts } from './tts.js';
+import {legacyResponse} from './legacy.js';
 export { TtsCache } from './tts.js';
 import { createHandler } from './core.js';
 import {sha256,generateFamilyCode,normalizeCode,validCode,equalSecret} from './auth.js';
@@ -130,6 +131,7 @@ export default {
   scheduled(controller,env,ctx){ctx.waitUntil(scheduledEmails(env,new Date(controller.scheduledTime)));},
   async fetch(request,env,ctx) {
     const url=new URL(request.url);
+    const moved=legacyResponse(request,env);if(moved)return moved;
     const cleanHeaders=new Headers(request.headers);cleanHeaders.delete('X-Internal-Account-Parent');request=new Request(request,{headers:cleanHeaders});
     const auth=await routeAuth(request,env);if(auth)return auth;
     if(url.pathname==='/mcp' || url.pathname.startsWith('/mcp/t/')) {

@@ -7,7 +7,7 @@ const localDay=(now,timezone)=>new Intl.DateTimeFormat('en-CA',{timeZone:timezon
 // Claim BEFORE provider submission: provider failures aren't retried endlessly or sent twice on cron replay.
 export async function scheduledEmails(env,now=new Date(),fetchImpl=fetch){
  if(!env.ACCOUNTS||(!env.RESEND_API_KEY&&!env.EMAIL_TEST_SINK))return;
- const origin=env.APP_ORIGIN||'https://spelling.jesklabs.com';
+ const origin=env.APP_ORIGIN||'https://spellami.jesklabs.com';
  const familyCache=new Map(),followCache=new Map();
  const get=async(f,kind)=>{const c=kind==='digest'?familyCache:followCache;if(!c.has(f.hash))c.set(f.hash,await familyData(env,f.hash,kind));return c.get(f.hash);};
  for(let offset=0;;offset+=100){const {accounts}=await accountRequest(env,'/list',{offset});if(!accounts.length)break;

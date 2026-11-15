@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scheduledEmails} from '../notifications.js';
 import {buildWeeklyDigest} from '../emails.js';
-const golden=`Family Practice — Example family
+const golden=`Spellami — Example family
 
 Weekly practice
 
-Here is your weekly Family Practice summary.
+Here is your weekly Spellami summary.
 
 Sam:
 4 practice attempts, 75% first-try accuracy, 2-day streak, 3 words due for review.

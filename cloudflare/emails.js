@@ -1,30 +1,30 @@
 // Pure content/scheduling helpers. AccountStore owns opt-ins, delivery claims and retention.
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clean = value => String(value ?? '').replace(/[\r\n]/g, ' ').slice(0, 200);
-export const DEFAULT_EMAIL_FROM = 'Family Practice <spelling@jesklabs.com>';
+export const DEFAULT_EMAIL_FROM = 'Spellami <spellami@jesklabs.com>';
 
 // All mail shares the same email-safe, inline-styled shell; no remote assets or fonts.
 const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
 const paragraph = text => `<p style="margin:0 0 16px;">${escape(text)}</p>`;
 const optIn = {
   weekly: "You're receiving this because you turned on weekly summaries.",
-  review: 'You’re receiving this because you opted in to review nudges in Family Practice.',
-  classUpdates: 'You’re receiving this because you opted in to class-list updates in Family Practice.'
+  review: 'You’re receiving this because you opted in to review nudges in Spellami.',
+  classUpdates: 'You’re receiving this because you opted in to class-list updates in Spellami.'
 };
 function frame({familyName, title, body, practiceUrl, unsubscribe, explanation}) {
-  const cta = practiceUrl ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;"><tr><td bgcolor="#2446A8" style="background-color:#2446A8;border-radius:8px;"><a href="${escape(safeLink(practiceUrl))}" style="display:inline-block;padding:14px 20px;color:#FFFFFF;font-weight:700;text-decoration:none;">Open Family Practice</a></td></tr></table>` : '';
+  const cta = practiceUrl ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;"><tr><td bgcolor="#2446A8" style="background-color:#2446A8;border-radius:8px;"><a href="${escape(safeLink(practiceUrl))}" style="display:inline-block;padding:14px 20px;color:#FFFFFF;font-weight:700;text-decoration:none;">Open Spellami</a></td></tr></table>` : '';
   const footer = `${explanation ? paragraph(explanation) : ''}${unsubscribe ? `<p style="margin:0;"><a href="${escape(safeLink(practiceUrl || unsubscribe))}" style="color:#4A5563;">Manage email preferences</a> · <a href="${escape(safeLink(unsubscribe))}" style="color:#4A5563;">Unsubscribe</a></p>` : ''}`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title></head><body style="margin:0;padding:0;background-color:#F2F3EE;color:#18212C;font-family:${font};font-size:16px;line-height:1.6;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background-color:#F2F3EE;"><tr><td align="center" style="padding:24px 12px;"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background-color:#FFFFFF;table-layout:fixed;"><tr><td bgcolor="#2446A8" style="padding:24px;background-color:#2446A8;color:#FFFFFF;overflow-wrap:anywhere;"><p style="margin:0;font-size:24px;font-weight:700;">Family Practice</p>${familyName ? `<p style="margin:4px 0 0;">${escape(clean(familyName))}</p>` : ''}</td></tr><tr><td style="padding:24px;overflow-wrap:anywhere;"><h1 style="margin:0 0 20px;font-size:24px;line-height:1.3;">${escape(title)}</h1>${body}${cta}</td></tr>${footer ? `<tr><td style="padding:24px;border-top:1px solid #DFE2DA;color:#4A5563;font-size:13px;">${footer}</td></tr>` : ''}</table></td></tr></table></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title></head><body style="margin:0;padding:0;background-color:#F2F3EE;color:#18212C;font-family:${font};font-size:16px;line-height:1.6;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background-color:#F2F3EE;"><tr><td align="center" style="padding:24px 12px;"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background-color:#FFFFFF;table-layout:fixed;"><tr><td bgcolor="#2446A8" style="padding:24px;background-color:#2446A8;color:#FFFFFF;overflow-wrap:anywhere;"><p style="margin:0;font-size:24px;font-weight:700;">Spellami</p>${familyName ? `<p style="margin:4px 0 0;">${escape(clean(familyName))}</p>` : ''}</td></tr><tr><td style="padding:24px;overflow-wrap:anywhere;"><h1 style="margin:0 0 20px;font-size:24px;line-height:1.3;">${escape(title)}</h1>${body}${cta}</td></tr>${footer ? `<tr><td style="padding:24px;border-top:1px solid #DFE2DA;color:#4A5563;font-size:13px;">${footer}</td></tr>` : ''}</table></td></tr></table></body></html>`;
 }
 function footerLines(kind, practiceUrl, unsubscribe) {
-  return [practiceUrl ? `Open Family Practice: ${safeLink(practiceUrl)}` : '', optIn[kind], unsubscribe ? `Manage email preferences: ${safeLink(practiceUrl || unsubscribe)}\nUnsubscribe: ${safeLink(unsubscribe)}` : ''].filter(Boolean);
+  return [practiceUrl ? `Open Spellami: ${safeLink(practiceUrl)}` : '', optIn[kind], unsubscribe ? `Manage email preferences: ${safeLink(practiceUrl || unsubscribe)}\nUnsubscribe: ${safeLink(unsubscribe)}` : ''].filter(Boolean);
 }
 const count = value => Math.max(0, Math.floor(Number(value) || 0));
 
 /** Only allowlisted summaries and up to five tricky words; never answers, codes or PINs. */
 export function buildWeeklyDigest({ familyName = 'Your family', kids = [], practiceUrl = '', unsubscribe = '' } = {}) {
-  const lines = [`Family Practice — ${clean(familyName)}`, '', 'Weekly practice', '', 'Here is your weekly Family Practice summary.'];
-  let body = paragraph('Here is your weekly Family Practice summary.');
+  const lines = [`Spellami — ${clean(familyName)}`, '', 'Weekly practice', '', 'Here is your weekly Spellami summary.'];
+  let body = paragraph('Here is your weekly Spellami summary.');
   for (const kid of kids.slice(0, 50)) {
     const name = clean(kid.name || kid.firstName || 'Your child');
     const attempts = count(kid.attempts ?? kid.practiceCount);
@@ -56,8 +56,8 @@ export function buildWeeklyDigest({ familyName = 'Your family', kids = [], pract
 export function buildPracticeNotice({kind, familyName = 'Your family', dueWords = 0, practiceUrl = '', unsubscribe = ''} = {}) {
   if (!['review', 'classUpdates'].includes(kind)) throw new Error('Invalid notice kind');
   const subject = kind === 'review' ? `${count(dueWords)} words ready for review` : 'A new class practice list is ready';
-  const paragraphs = kind === 'review' ? ['A little practice goes a long way.', `${count(dueWords)} words are ready for review.`] : ['A class you follow has a new week ready.', 'Open Family Practice to choose what to import.'];
-  return {subject, text:[`Family Practice — ${clean(familyName)}`, '', subject, '', ...paragraphs, '', ...footerLines(kind,practiceUrl,unsubscribe)].join('\n'), html:frame({familyName,title:subject,body:paragraphs.map(paragraph).join(''),practiceUrl,unsubscribe,explanation:optIn[kind]}), ...(unsubscribe ? {unsubscribe:safeLink(unsubscribe)} : {})};
+  const paragraphs = kind === 'review' ? ['A little practice goes a long way.', `${count(dueWords)} words are ready for review.`] : ['A class you follow has a new week ready.', 'Open Spellami to choose what to import.'];
+  return {subject, text:[`Spellami — ${clean(familyName)}`, '', subject, '', ...paragraphs, '', ...footerLines(kind,practiceUrl,unsubscribe)].join('\n'), html:frame({familyName,title:subject,body:paragraphs.map(paragraph).join(''),practiceUrl,unsubscribe,explanation:optIn[kind]}), ...(unsubscribe ? {unsubscribe:safeLink(unsubscribe)} : {})};
 }
 
 function safeLink(value) {

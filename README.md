@@ -1,8 +1,8 @@
-# Family Practice ☀
+# Spellami ☀
 
 A free, open-source spelling and Bible-verse practice app, built by a parent for his own kids and open to any family.
 
-**[Try the hosted instance](https://spelling.jesklabs.com)** · [Deployment guide](cloudflare/deploy.md) · [Security](SECURITY.md)
+**[Try the hosted instance](https://spellami.jesklabs.com)** · [Deployment guide](cloudflare/deploy.md) · [Security](SECURITY.md)
 
 - **Spelling:** hear a word and sentence, learn it with progressively fading letter clues, then take a test. Includes printable lists, retries, and tricky-word review.
 - **Verses:** parent-provided wording, read/listen, progressive blanks, first letters, memory typing, and reference quizzes. Samples use public-domain KJV.
@@ -29,13 +29,13 @@ node --test
 node cloudflare/deploy.mjs --dry-run  # no network calls
 ```
 
-Set `CF_API_TOKEN` and `CF_ACCOUNT_ID`, and provide Worker secrets `SESSION_SECRET` and `IP_HASH_SALT` (each at least 32 characters). **Keep SESSION_SECRET stable** across releases. Optional `OPS_TOKEN` enables private aggregate stats. Optional shared identity uses an `ACCOUNTS_SVC` service binding and explicit `FP_SIGNIN_*` feature flags (off by default), not this app’s own Google OAuth client or Resend sign-in delivery. Optional `RESEND_API_KEY` is only for opted-in practice notifications. Set `EMAIL_FROM` to a sender verified with Resend (default `Family Practice <spelling@jesklabs.com>` must be changed for your domain). Set `APP_ORIGIN` to your canonical HTTPS origin for notification links and authentication callbacks. Without shared identity configured, code/PIN-only use still works. Then:
+Set `CF_API_TOKEN` and `CF_ACCOUNT_ID`, and provide Worker secrets `SESSION_SECRET` and `IP_HASH_SALT` (each at least 32 characters). **Keep SESSION_SECRET stable** across releases. Optional `OPS_TOKEN` enables private aggregate stats. Optional shared identity uses an `ACCOUNTS_SVC` service binding and explicit `FP_SIGNIN_*` feature flags (off by default), not this app’s own Google OAuth client or Resend sign-in delivery. Optional `RESEND_API_KEY` is only for opted-in practice notifications. Set `EMAIL_FROM` to a sender verified with Resend (default `Spellami <spellami@jesklabs.com>` must be changed for your domain). Set `APP_ORIGIN` to your canonical HTTPS origin for notification links and authentication callbacks. Without shared identity configured, code/PIN-only use still works. Then:
 
 ```sh
 node cloudflare/deploy.mjs
 ```
 
-The uploader adds the `ACCOUNTS` / `AccountStore` binding using additive migration v4 and configures hourly cron (`0 * * * *`); it does not configure DNS or hostnames. The shared Accounts service owns Google and email-code authentication; Family Practice keeps app-local family links keyed by the stable Accounts subject. Register this app’s exact callback with Accounts (see deployment guide). Notification Resend is optional, subject to its own quotas and configuration; no provider is contacted by dry-run/tests. See [the deployment guide](cloudflare/deploy.md) for token scopes, hostname setup, local Wrangler smoke tests, migrations, and free-tier speech quotas. See [PWA notes](cloudflare/PWA.md) for install/cache behavior and release versioning.
+The uploader adds the `ACCOUNTS` / `AccountStore` binding using additive migration v4 and configures hourly cron (`0 * * * *`); it does not configure DNS or hostnames. The shared Accounts service owns Google and email-code authentication; Spellami keeps app-local family links keyed by the stable Accounts subject. Register this app’s exact callback with Accounts (see deployment guide). Notification Resend is optional, subject to its own quotas and configuration; no provider is contacted by dry-run/tests. See [the deployment guide](cloudflare/deploy.md) for token scopes, hostname setup, local Wrangler smoke tests, migrations, and free-tier speech quotas. See [PWA notes](cloudflare/PWA.md) for install/cache behavior and release versioning.
 
 ## Self-host: Node / Docker (one family, trusted LAN)
 
@@ -69,7 +69,7 @@ Bug reports and pull requests are welcome. Read [AGENTS.md](AGENTS.md), use fict
 In the hosted Worker build, open **Parent mode**, unlock with your PIN, then choose **Connect an AI assistant**. Create a named connection with **Add & read** (default) or **Read only** access. Save its connection URL immediately: it is shown only once. Up to five connections can be active.
 
 - **Claude:** Settings → Connectors → Add custom connector → paste the URL.
-- **Claude Code:** `claude mcp add --transport http family-practice <url>`
+- **Claude Code:** `claude mcp add --transport http spellami <url>`
 - **Other clients:** use any MCP client supporting Streamable HTTP. The URL is `https://<your-origin>/mcp/t/<token>`. Header-capable clients can instead use `https://<your-origin>/mcp` with `Authorization: Bearer <token>`.
 
 Anyone with this link can add and read your family's lists. Revoke it if shared by mistake. Read-only connections cannot change content. Parent PIN changes do **not** revoke connections; use **Revoke** or **Revoke all**. Deleting the family removes all connections.
