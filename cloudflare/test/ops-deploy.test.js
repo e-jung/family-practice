@@ -10,7 +10,7 @@ test('deployer writes optional provider secrets only if supplied and warns on om
       let result={};
       if(path.endsWith('/settings')) result={migration_tag:'v2'};
       else if(path.endsWith('/assets-upload-session')) result={jwt:'private-upload-jwt',buckets:[]};
-      else if(path.endsWith('/scripts/family-practice')) { const metadata=JSON.parse(await options.body.get('metadata').text()); assert.equal(metadata.bindings.find(b=>b.name==='EMAIL_FROM').text,env.EMAIL_FROM||'Spellami <spellami@jesklabs.com>'); }
+      else if(path.endsWith('/scripts/family-practice')) { const metadata=JSON.parse(await options.body.get('metadata').text()); assert.equal(metadata.bindings.find(b=>b.name==='EMAIL_FROM').text,env.EMAIL_FROM||'Spellami <hello@jesklabs.com>'); }
       else if(path.endsWith('/secrets')) { const secret=JSON.parse(options.body);secrets.push(secret); }
       return Response.json({success:true,result});
     }});

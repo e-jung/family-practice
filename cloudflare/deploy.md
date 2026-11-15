@@ -189,7 +189,7 @@ build. Before a future authorized deployment, provide:
 | `RESEND_API_KEY` | Optional Resend API key for opted-in notifications only |
 | `APP_ORIGIN` | Canonical HTTPS app origin used for notification links and auth callbacks; default `https://spellami.jesklabs.com`; self-hosters must override |
 | `LEGACY_HOSTS` | Comma-separated former hostnames bound to this Worker that redirect to `APP_ORIGIN` (`cloudflare/legacy.js`); uploader default `spelling.jesklabs.com`, override with `FP_LEGACY_HOSTS` (empty disables) |
-| `EMAIL_FROM` | Sender var; default `Spellami <spellami@jesklabs.com>`; use your verified domain |
+| `EMAIL_FROM` | Sender var; default `Spellami <hello@jesklabs.com>`; use your verified domain |
 
 **`PARENT_PIN` is not used or required.** Each parent chooses their own PIN.
 Generate the two secrets locally (e.g. 32 random bytes encoded as hex), save them

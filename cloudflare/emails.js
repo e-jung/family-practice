@@ -1,7 +1,7 @@
 // Pure content/scheduling helpers. AccountStore owns opt-ins, delivery claims and retention.
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clean = value => String(value ?? '').replace(/[\r\n]/g, ' ').slice(0, 200);
-export const DEFAULT_EMAIL_FROM = 'Spellami <spellami@jesklabs.com>';
+export const DEFAULT_EMAIL_FROM = 'Spellami <hello@jesklabs.com>';
 
 // All mail shares the same email-safe, inline-styled shell; no remote assets or fonts.
 const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";

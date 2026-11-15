@@ -10,7 +10,7 @@ Last updated: 2026-11-15
 
 - Hosted instance: https://spellami.jesklabs.com (listed as "spellami" on jesklabs.com). The former https://spelling.jesklabs.com stays attached to the same Worker as a legacy host: pages 301 (path and query kept), `/mcp` 308, old APIs 410, and its `/sw.js` hands a device's saved Family Code to `/f/<code>` on the new origin, then unregisters.
 - Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`, `ShareStore`, `AccountStore`), and Workers AI for speech. Migrations deployed: `v1`–`v4`; hourly notification cron configured.
-- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v13`.
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v14`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
 - The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
 
@@ -26,7 +26,7 @@ Last updated: 2026-11-15
 | `RESEND_API_KEY` | Optional Worker secret (unset in production) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
 | `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin (`https://spellami.jesklabs.com`); self-hosters must override the hosted default. |
 | `LEGACY_HOSTS` | Worker var | Former hostnames that redirect to `APP_ORIGIN` (`spelling.jesklabs.com`); deployer override `FP_LEGACY_HOSTS`, empty disables. |
-| `EMAIL_FROM` | Worker var | Default `Spellami <spellami@jesklabs.com>`; self-hosters must configure their verified sender. |
+| `EMAIL_FROM` | Worker var | Default `Spellami <hello@jesklabs.com>` (the shared Jesklabs sender); self-hosters must configure their verified sender. |
 | `TTS_SPEAKER` | Worker var (optional) | Aura-1 speaker; default `asteria`. |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | Deployer environment only | Token needs Workers Scripts edit (+ zone Workers Routes/DNS for the custom domain). Never a Worker binding. |
 | Custom domains | Workers Custom Domains | `spellami.jesklabs.com` (canonical) and `spelling.jesklabs.com` (legacy), both on this Worker; attached once, `deploy.mjs` does not manage routes. Keep the legacy domain attached: printed codes, class QR codes and installed PWAs point at it. `workers_dev = false`. |

@@ -10,7 +10,7 @@ const API = 'https://api.cloudflare.com/client/v4';
 export const SCRIPT = 'family-practice';
 export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'cloudflare/sharing.js', 'cloudflare/accounts.js', 'cloudflare/emails.js', 'cloudflare/notifications.js', 'cloudflare/legacy.js', 'lib/practice.js'];
 export const OPTIONAL_SECRETS = ['OPS_TOKEN', 'RESEND_API_KEY'];
-export const EMAIL_FROM = 'Spellami <spellami@jesklabs.com>';
+export const EMAIL_FROM = 'Spellami <hello@jesklabs.com>';
 export const SCHEDULES = [{ cron: '0 * * * *' }];
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',

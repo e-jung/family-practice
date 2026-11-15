@@ -68,7 +68,7 @@ SIGNIN_EMAIL = "0"
 SIGNIN_GOOGLE = "0"
 APP_ORIGIN = "https://spellami.jesklabs.com"
 LEGACY_HOSTS = "spelling.jesklabs.com"
-EMAIL_FROM = "Spellami <spellami@jesklabs.com>"
+EMAIL_FROM = "Spellami <hello@jesklabs.com>"
 
 [triggers]
 crons = ["0 * * * *"]

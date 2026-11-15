@@ -29,7 +29,7 @@ node --test
 node cloudflare/deploy.mjs --dry-run  # no network calls
 ```
 
-Set `CF_API_TOKEN` and `CF_ACCOUNT_ID`, and provide Worker secrets `SESSION_SECRET` and `IP_HASH_SALT` (each at least 32 characters). **Keep SESSION_SECRET stable** across releases. Optional `OPS_TOKEN` enables private aggregate stats. Optional shared identity uses an `ACCOUNTS_SVC` service binding and explicit `FP_SIGNIN_*` feature flags (off by default), not this app’s own Google OAuth client or Resend sign-in delivery. Optional `RESEND_API_KEY` is only for opted-in practice notifications. Set `EMAIL_FROM` to a sender verified with Resend (default `Spellami <spellami@jesklabs.com>` must be changed for your domain). Set `APP_ORIGIN` to your canonical HTTPS origin for notification links and authentication callbacks. Without shared identity configured, code/PIN-only use still works. Then:
+Set `CF_API_TOKEN` and `CF_ACCOUNT_ID`, and provide Worker secrets `SESSION_SECRET` and `IP_HASH_SALT` (each at least 32 characters). **Keep SESSION_SECRET stable** across releases. Optional `OPS_TOKEN` enables private aggregate stats. Optional shared identity uses an `ACCOUNTS_SVC` service binding and explicit `FP_SIGNIN_*` feature flags (off by default), not this app’s own Google OAuth client or Resend sign-in delivery. Optional `RESEND_API_KEY` is only for opted-in practice notifications. Set `EMAIL_FROM` to a sender verified with Resend (default `Spellami <hello@jesklabs.com>` must be changed for your domain). Set `APP_ORIGIN` to your canonical HTTPS origin for notification links and authentication callbacks. Without shared identity configured, code/PIN-only use still works. Then:
 
 ```sh
 node cloudflare/deploy.mjs
