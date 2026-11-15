@@ -1,9 +1,10 @@
 # Mobile and installable shell
 
 The public Cloudflare build is installable with `/manifest.webmanifest`, generated
-192/512px maskable PNGs, an iOS 180px touch icon, and `/sw.js`. All requests stay
-first-party. Regenerate icons with `node cloudflare/scripts/generate-icons.mjs`
-(Node built-ins only; committed PNGs mean no deployment build step).
+192/512px `any` and full-bleed `maskable` PNGs, an SVG favicon, an iOS 180px touch icon, and `/sw.js`. All requests stay
+first-party. Icons are hand-built SVGs (`public/icons/icon.svg`, `scripts/icon-src/`); regenerate the PNGs
+with `PLAYWRIGHT_MODULE=… node cloudflare/scripts/generate-icons.mjs` (dev-only Playwright, as in the UI
+smokes; committed PNGs mean no deployment build step).
 
 ## Release maintenance
 

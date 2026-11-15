@@ -1,30 +1,23 @@
-// Reproducible PNG icons using only Node built-ins. Run: node cloudflare/scripts/generate-icons.mjs
-import { deflateSync } from 'node:zlib';
-import { writeFile, mkdir } from 'node:fs/promises';
-const destination = new URL('../public/icons/', import.meta.url);
-await mkdir(destination, { recursive: true });
-function crc32(bytes) {
-  let crc = 0xffffffff;
-  for (const byte of bytes) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-function chunk(type, bytes) {
-  const data = Buffer.concat([Buffer.from(type), bytes]);
-  const size = Buffer.alloc(4); size.writeUInt32BE(bytes.length);
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(data));
-  return Buffer.concat([size, data, crc]);
-}
-for (const size of [180, 192, 512]) {
-  const pixels = Buffer.alloc((size * 3 + 1) * size);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    // A seed packet (white stock, marigold band) on cobalt, inside the maskable safe circle.
-    const u = x / size, v = y / size;
-    const packet = u > .33 && u < .67 && v > .23 && v < .77;
-    const band = packet && v > .6;
-    const color = band ? [242, 179, 61] : packet ? [255, 255, 255] : [36, 70, 168];
-    const offset = y * (size * 3 + 1) + 1 + x * 3;
-    for (let c = 0; c < 3; c++) pixels[offset + c] = color[c];
+// Rasterizes the hand-built SVG icons. Dev-only: needs Playwright + Chromium (same setup as the UI smokes).
+// Run: PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs [CHROMIUM_PATH=…] node cloudflare/scripts/generate-icons.mjs
+// Sources: public/icons/icon.svg (rounded "any" icon, also the SVG favicon), icon-src/full.svg (full-bleed, for iOS),
+// icon-src/maskable.svg (full-bleed, content inside the 80% maskable safe zone). The "a" is the Practice Reader Bold glyph.
+import { readFile } from 'node:fs/promises';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const at = path => new URL(path, import.meta.url);
+const jobs = [
+  ['../public/icons/icon.svg', 'icon-192.png', 192], ['../public/icons/icon.svg', 'icon-512.png', 512],
+  ['icon-src/full.svg', 'icon-180.png', 180],
+  ['icon-src/maskable.svg', 'icon-maskable-192.png', 192], ['icon-src/maskable.svg', 'icon-maskable-512.png', 512],
+];
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+try {
+  for (const [source, name, size] of jobs) {
+    const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 });
+    const svg = (await readFile(at(source))).toString('base64');
+    await page.setContent(`<style>html,body{margin:0;background:transparent}</style><img src="data:image/svg+xml;base64,${svg}" width="${size}" height="${size}" style="display:block">`);
+    await page.locator('img').evaluate(img => img.decode());
+    await page.screenshot({ path: at('../public/icons/' + name).pathname, omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });
+    await page.close();
   }
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 2;
-  await writeFile(new URL(`icon-${size}.png`, destination), Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))]));
-}
+} finally { await browser.close(); }

@@ -30,11 +30,16 @@ async function harness() {
 test('installable manifest, generated real PNG icons and external mobile module are shipped', async () => {
   const manifest = JSON.parse(await asset('manifest.webmanifest'));
   assert.equal(manifest.start_url, '/'); assert.equal(manifest.display, 'standalone');
-  for (const size of [180, 192, 512]) {
-    const png = await asset(`icons/icon-${size}.png`);
+  for (const name of ['icon-180', 'icon-192', 'icon-512', 'icon-maskable-192', 'icon-maskable-512']) {
+    const png = await asset(`icons/${name}.png`), size = Number(name.split('-').pop());
     assert.equal(png.subarray(1, 4).toString(), 'PNG'); assert.equal(png.readUInt32BE(16), size); assert.equal(png.readUInt32BE(20), size);
   }
-  assert.ok(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose.includes('maskable')));
+  // Maskable icons are full-bleed (opaque RGB); iOS needs an opaque apple-touch icon too.
+  for (const name of ['icon-180', 'icon-maskable-192', 'icon-maskable-512']) assert.equal((await asset(`icons/${name}.png`))[25], 2);
+  assert.ok(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'maskable'));
+  assert.ok(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'any'));
+  for (const icon of manifest.icons) await asset(icon.src.slice(1));
+  assert.match((await asset('icons/icon.svg')).toString(), /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
   const html = (await asset('index.html')).toString();
   assert.match(html, /rel="manifest"/); assert.match(html, /apple-touch-icon/); assert.match(html, /viewport-fit=cover/); assert.match(html, /src="\/pwa.js"/);
 });
