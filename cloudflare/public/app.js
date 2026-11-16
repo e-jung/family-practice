@@ -1,3 +1,5 @@
+import {verseMasteryCopy} from "/verse-mastery.js";
+import {newRound, reduce, roundDone, roundBusy} from "/practice-round.js";
 import {createIdentityUI} from "/identity.js";
 import {createSharingUI} from "/sharing-ui.js";
 import {newLearnWord, advanceLearn} from "/learn.js";
@@ -585,7 +587,7 @@ async function startSpelling(ws, list = null, kind = "spelling") {
           const ordered = shuffle.checked ? shuffled(ws) : [...ws];
           const session = await api("/api/sessions", { kid_id: kid.id, list_id: list?.id, word_ids: ordered.map((w) => w.id), kind });
           if (view !== viewVersion) return;
-          spellingStep({ ws: ordered, list, kind, session: session.id, index: 0, first: 0, misses: [], results: [] });
+          spellingStep(newRound(ordered, {list, kind, session: session.id}));
         }, "primary"),
       ),
     ),
@@ -595,8 +597,7 @@ function spellingStep(round) {
   shell("practice", "spelling");
   const view = viewVersion;
   const w = round.ws[round.index];
-  let retry = false,
-    done = false;
+
   const answer = practiceField(input("answer", "", {
     class: "answer",
     autocomplete: "off",
@@ -611,19 +612,19 @@ function spellingStep(round) {
   const check = el("button", { type: "submit", form: "practice-form", class: "primary" }, "Check word");
   const replay = () => say([w.word, w.sentence, w.word]);
   const band = () => practiceBand({ title: round.list?.title || (round.kind === "tricky" ? "Tricky words" : "Review round"), status: `Word ${round.index + 1} of ${round.ws.length}`,
-    cells: roundCells(round.ws.length, round.index, round.results), exit: exitButton("End practice", () => { if (confirm("Leave this round? Your attempts will still be saved.")) render(); }) });
+    cells: roundCells(round.ws.length, round.index, round.results), exit: exitButton("End practice", () => { if (confirm("Leave this round? Your attempts will still be saved.")) { round = reduce(round, {type: "QUIT"}); render(); } }) });
   const form = el(
     "form",
     {
       id: "practice-form",
       onsubmit: async (e) => {
         e.preventDefault();
-        if (check.disabled) return;
-        if (done) {
+        if (check.disabled || roundBusy(round)) return;
+        if (roundDone(round)) {
           check.disabled = true;
           try {
             if (round.index + 1 === round.ws.length) await finishSpelling(round);
-            else { round.index++; spellingStep(round); }
+            else { round = reduce(round, {type: "NEXT"}); spellingStep(round); }
           } catch (err) {
             toast(err.message);
           } finally {
@@ -631,19 +632,19 @@ function spellingStep(round) {
           }
           return;
         }
-        check.disabled = true;
+        round = reduce(round, {type: "SUBMIT"});
+        check.disabled = roundBusy(round);
         try {
           const result = await api("/api/attempts", { session_id: round.session, word_id: w.id, typed: answer.value });
           if (view !== viewVersion) return;
+          const retry = round.phase === "checking-retry";
+          round = reduce(round, {type: "RESULT", correct: result.correct});
           if (result.correct) {
-            if (!retry) round.first++;
             feedback.textContent = retry ? "You got it. Nice persistence!" : "Yes! First-try success!";
             feedback.className = "feedback good";
-            round.results[round.index] = retry ? "miss" : "done";
-            done = true;
+
           } else if (!retry) {
-            retry = true;
-            round.misses.push(w);
+
             feedback.textContent = "Almost. Listen once more and try again.";
             feedback.className = "feedback retry";
             answer.select();
@@ -651,20 +652,20 @@ function spellingStep(round) {
           } else {
             feedback.textContent = "Let’s learn it: " + w.word;
             feedback.className = "feedback retry";
-            round.results[round.index] = "miss";
-            done = true;
+
             say(`${w.word}. ${[...w.word].join(", ")}. ${w.word}.`, 0.8);
           }
-          if (done) {
-            answer.disabled = true;
+          if (roundDone(round)) {
+            answer.disabled = roundDone(round);
             app.querySelector(".practice-band").replaceWith(band());
             check.textContent = round.index === round.ws.length - 1 ? "See my results" : "Next word";
             focus(check);
           } else focus(answer);
         } catch (err) {
+          round = reduce(round, {type: "ERROR"});
           toast(err.message);
         } finally {
-          check.disabled = false;
+          check.disabled = roundBusy(round);
         }
       },
     },
@@ -693,6 +694,7 @@ async function finishSpelling(r) {
   const view = viewVersion;
   await api("/api/sessions/complete", { session_id: r.session });
   if (view !== viewVersion) return;
+  r = reduce(r, {type: "NEXT"});
   shell("practice", "spelling");
   app.append(practiceBand({ title: r.list?.title || "Review round", status: "Round complete", cells: roundCells(r.ws.length, -1, r.results), exit: exitButton("Done", render) }),
     el("section", { class: "desk" },
@@ -896,7 +898,7 @@ async function progressHome() {
           el("strong", {}, v.reference),
           el("span", { class: "stars", role: "img", "aria-label": `${v.stars} of 3 stars` }, [0, 1, 2].map((i) => icon("star", { filled: i < v.stars }))),
           el("span", { class: "meta" }, `Best ${v.best}% of the last 10 · ${v.attempts} ${v.attempts === 1 ? "practice" : "practices"}`)))) : el("p", {}, "Practice a verse to start growing stars."),
-        el("small", {}, "One star: 70%+. Two: 95%+. Three: 95%+ from memory or with first-letter clues. Read & listen doesn’t earn stars."),
+        el("small", {}, verseMasteryCopy()),
       ),
     ));
     app.append(el("div", { class: "section" },

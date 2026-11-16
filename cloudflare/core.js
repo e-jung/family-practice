@@ -1,3 +1,4 @@
+import {verseMastery} from './public/verse-mastery.js';
 import {settingsFor} from './runtime-settings.js';
 import {authConfig} from './accounts.js';
 import {createSharing} from './sharing.js';
@@ -240,30 +241,7 @@ export function createHandler(ctx, env) {
       ...x,
       accuracy: x.total ? Math.round((100 * x.correct) / x.total) : 0,
     }));
-    const mastery = all("SELECT * FROM verses WHERE kid_id=?", kid).map((v) => {
-      const recent = va
-        .filter(
-          (a) =>
-            a.verse_id === v.id &&
-            a.verse_text === v.text &&
-            a.verse_reference === v.reference,
-        )
-        .slice(0, 10);
-      const best = Math.max(
-        0,
-        ...recent.filter((a) => a.mode !== "read").map((a) => a.accuracy),
-      );
-      const advanced = recent.some(
-        (a) => ["memory", "first"].includes(a.mode) && a.accuracy >= 95,
-      );
-      return {
-        id: v.id,
-        reference: v.reference,
-        best,
-        stars: best >= 95 ? (advanced ? 3 : 2) : best >= 70 ? 1 : 0,
-        attempts: recent.length,
-      };
-    });
+    const mastery = all("SELECT * FROM verses WHERE kid_id=?", kid).map(v => verseMastery(v, va));
     return {
       wordBank: wordBank(kid),
       listsCompleted: new Set(
