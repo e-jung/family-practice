@@ -1,8 +1,8 @@
 # Spellami — public multi-family Worker
 
-The public build lives in `cloudflare/` and `cloudflare/public/`. The independent
-single-family Node/Docker LAN build (`server.js`, `public/`) remains working and
-covered by the same `node --test` suite; it is not the public deployment.
+The only supported build lives in `cloudflare/` and `cloudflare/public/`.
+The independent Node/Docker LAN build was retired on 2026-11-16; its last source
+is archived at `lan-build-final`, not maintained alongside this deployment.
 
 ## Product and privacy
 
@@ -122,7 +122,7 @@ missing-AI 503 response. Never invoke real inference from a local smoke.
 Requires Node.js 24+. From the repository root:
 
 ```sh
-node --test
+npm run check
 node --check cloudflare/deploy.mjs
 node cloudflare/deploy.mjs --dry-run
 ```

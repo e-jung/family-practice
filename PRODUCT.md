@@ -10,7 +10,7 @@ live interview was possible (run as a delegated agent). Facts marked
 
 web
 
-Installable PWA (Cloudflare Worker build) plus a single-family Node build for a home LAN. Mobile web, not native.
+Installable PWA on one Cloudflare Worker. Mobile web, not native. The separate Node/LAN build was retired on 2026-11-16.
 
 ## Users
 

@@ -1,4 +1,17 @@
-# Verification — 2026-11-14 · Learn stages and spaced Review
+# Verification
+
+## 2026-11-16 — phase 1 guardrails and LAN retirement
+
+The Cloudflare Worker is now the only supported build. `lan-build-final` preserves
+the retired LAN source. `lib/practice.js`, its tests and `cloudflare/tts.js` remain.
+The local `npm run check` runs all retained tests and the shrinking source gate;
+regression fixtures verify rejection of oversized files and new long lines.
+The isolated staged phase-1 artifact passed 160 tests on Node v24.22.3, with
+48 existing source offenders baselined (630 long lines; `app.js` is 1,632 lines).
+The baseline comes from the pre-change HEAD, not concurrent phase-2 edits.
+No deployment, network request, push or live app behavior change is part of phase 1.
+
+## Historical verification — 2026-11-14 · Learn stages and spaced Review
 
 Node **v24.22.2**, zero application runtime dependencies. All checks used fictional, disposable data. No push, deployment, production requests, Cloudflare account APIs, or real AI inference. Wrangler telemetry was disabled; the local config omitted the remote AI binding.
 
@@ -6,7 +19,7 @@ Node **v24.22.2**, zero application runtime dependencies. All checks used fictio
 
 `node --test`: **68 passed, 0 failed/cancelled/skipped/todo** (previously 60).
 
-Both Node/LAN and Worker builds remain covered. New coverage includes Leitner promotion/cap/demotion/retry behavior, Learn recall limits and skipped attempts, normalized cross-list merging, kid isolation, historical/archived review references, 15-word ordering/cap, UTC midnight/leap-day/year/DST boundaries, metadata and exposure counters, deterministic backfill equality with live updates, one-time backfill, backup preservation, and early Learn-to-Test exits. Cued Learn introduces box 1 but does not earn recall credit. Skip markers are counted separately from real Learn attempts.
+At that release, both Node/LAN and Worker builds were covered (the LAN build is now retired). New coverage includes Leitner promotion/cap/demotion/retry behavior, Learn recall limits and skipped attempts, normalized cross-list merging, kid isolation, historical/archived review references, 15-word ordering/cap, UTC midnight/leap-day/year/DST boundaries, metadata and exposure counters, deterministic backfill equality with live updates, one-time backfill, backup preservation, and early Learn-to-Test exits. Cued Learn introduces box 1 but does not earn recall credit. Skip markers are counted separately from real Learn attempts.
 
 ## Real local Worker / Miniflare
 
@@ -33,4 +46,4 @@ Wrangler **4.161.0**, fresh disposable persistence, test-only secrets:
 - Service worker shell cache bumped from `v2` to **`v3`**. Strict CSP and first-party-only assets remain unchanged; no new binding or deployed migration.
 - `git diff --check` clean. `CLAUDE.md` remains the `AGENTS.md` symlink.
 - No physical iOS/Safari/device install or human audio-quality verification. No deployment, Cloudflare account migration, DNS change, real Workers AI/Piper connection, or Docker launch attempted.
-- Node/LAN retains its established tricky-word flow; the new scheduled Review UI/storage belongs to the live Worker build.
+- At that release, Node/LAN retained its established tricky-word flow; scheduled Review belonged to the Worker. The LAN build is now retired.

@@ -18,14 +18,15 @@ The app was called Family Practice until 2026-11-15. Internal identifiers keep t
 - Parents provide verse text to avoid translation licensing/API dependencies; do not fetch copyrighted Bible translations. Included samples use public-domain KJV.
 - Keep operation within free-tier limits by default; review costs before adding paid services.
 
-## Two self-hosted builds
+## One Cloudflare build
 
-| Path | Build |
-| --- | --- |
-| `cloudflare/` | Multi-family Worker with Static Assets and SQLite-backed Durable Objects |
-| `server.js`, `public/`, `lib/tts.js`, Docker files | Single-family Node 24 app for a trusted LAN, with optional Wyoming/Piper speech |
+`cloudflare/` is the only supported build: a multi-family Worker with Static Assets
+and SQLite-backed Durable Objects. Families start empty. `lib/practice.js` remains
+its pure answer checking, verse comparison, and review scheduling core, covered by
+`test/practice.test.js`. Keep `cloudflare/tts.js`: it is the live cloud speech edge.
 
-Keep both builds working and tested. `lib/practice.js` is shared answer checking, verse comparison, and tricky-word logic. The Node build seeds fictional Sam/Alex profiles with blank grades and sample practice material. The Worker starts families empty.
+The Node/Docker LAN build was retired on 2026-11-16 and archived at `lan-build-final`.
+Do not restore its server, UI, Piper adapter or deployment files.
 
 ## Worker architecture and limits
 
@@ -33,7 +34,7 @@ Keep both builds working and tested. `lib/practice.js` is shared answer checking
 - One `FamilyDatabase` Durable Object per hashed Family Code; never log raw codes or use them as object names.
 - Optional private `GET /api/ops/stats` uses an independent `OPS_TOKEN` bearer and returns only numeric aggregates (no identifiers/content). Family reports register families lazily; never claim dormant historical families are counted. See deploy.md for response/coverage.
 - Learn sessions use kind `learn`, attempt mode `learn`, and stored `step` 0/50/75/100 (legacy 25 and request `level` alias accepted); 1–3 letters use 0/100, 4–5 use 0/50/100, and 6+ use all four stages. Misses compare then retry the same stage; first-try Fade success jumps to Recall, which alone completes learning. A `skip` step records shortcuts without correct/first-try credit. Learn history is separate from test scores and completed test lists; learning counts toward practice streaks. Old attempts migrate to test/0.
-- Worker spelling Review uses a per-kid, normalized-word Leitner bank (boxes 1–6; 1/2/4/7/14/30 UTC days), persisted inside each family SQLite DO and backfilled deterministically from attempts. Review sessions use kind `review`, test-mode attempts, max 15 due words, and the same one-retry voice/keyboard flow. Pure scheduling lives in `lib/practice.js`; the LAN build retains its existing tricky-word flow. No new binding or deployed migration is needed.
+- Worker spelling Review uses a per-kid, normalized-word Leitner bank (boxes 1–6; 1/2/4/7/14/30 UTC days), persisted inside each family SQLite DO and backfilled deterministically from attempts. Review sessions use kind `review`, test-mode attempts, max 15 due words, and the same one-retry voice/keyboard flow. Pure scheduling lives in `lib/practice.js`. No new binding or deployed migration is needed.
 - MCP is stateless Streamable HTTP at `/mcp/t/<token>` or `/mcp` with `Authorization: Bearer <token>`. Tokens are `fpc2_<route>_<256-bit-random-hex>`. The route is base64url(12-byte random IV || AES-GCM ciphertext/tag of the family hash), encrypted with a Web Crypto AES-256 key derived by HMAC-SHA-256(SESSION_SECRET, "mcp-route-v2"). Authenticate/decrypt before DO routing; never expose bare SHA-256(Family Code), which enables offline guessing of the ~46-bit code space. Legacy `fp_` links are unconditionally retired (401); idempotent format-column migration marks existing rows retired and Parent permits revocation/replacement. The family DO stores only SHA-256 token hashes plus connection metadata; never log/backup plaintext tokens. Both deployment paths disable automatic invocation logs because connector URLs contain bearer credentials; retain application error logs without request URLs. Parent-unlocked connection APIs manage at most five named connections. Scopes are `add-read` (default) and `read-only`; neither allows deletion. PIN changes keep connections; explicit revoke/revoke-all and family deletion invalidate them.
 - The current official MCP revision is `2026-07-28` (per-request metadata, no initialize handshake); this connector deliberately implements the still-supported legacy initialize lifecycle requested for existing clients, protocol `2025-11-25` (also negotiates `2025-06-18` and `2025-03-26`), JSON-RPC 2.0 JSON responses, no SSE/session state/OAuth, no batches, exact-origin checks when Origin is present. Limits: 256 KiB bodies, 60 requests/minute/token and 20 writes/hour/family. Registry pre-auth dispatch is bounded to 240 requests/min/IP and 2,400/min globally, before unknown tokens can instantiate family objects; shared core validation and storage enforce the existing content limits and family boundaries. Assistant results expose aggregate progress, never raw typed answers.
 - Parent management is its own slate page with four primary controls (Kids, Lists, Verses, Family) and a collapsible More group (This device, Sign-in & email, Connect an AI assistant, Shared lists, Class lists, Following); kid navigation always has exactly three tabs. Parent forms use a scrollable sheet body with fixed/sticky actions and iOS-safe full-width dates. Bump the shell version with UI changes.
@@ -61,19 +62,26 @@ Keep both builds working and tested. `lib/practice.js` is shared answer checking
 - Cache: `caches.default` → SQLite `TtsCache` → AI. Keys include model, speaker, encoding, language, and text hash. Validate MP3 signatures; max clip 512 KB, durable LRU cap 400 MiB.
 - Cache-miss character budgets: 6,000 globally/UTC day, 1,500/family/UTC day, 2,000/hashed IP/hour, 300/request. Failed inference counts; cache hits do not. Account-wide free quotas can change independently.
 - Migration `v1` creates family/registry objects; additive `v2` creates `TtsCache`; additive `v3` creates `ShareStore`; additive `v4` creates `AccountStore`. Never rewrite deployed migration history.
-- Node: `PIPER_HOST` defaults empty and must be explicitly configured for Piper synthesis. Standard Wyoming port is 10200. Without Piper, use browser speech; never embed a private network endpoint.
 
 ## Development and checks
 
 - Node 24+, zero npm runtime dependencies, vanilla JS, no build step. Preserve this unless a clear need warrants review.
-- Run `node --test` before deployment or merging behavior changes. Use temporary test data and fake speech services, not real family data.
+- Run `npm run check` before deployment or merging changes. Use temporary test data and fake speech services, not real family data.
+- `scripts/check.mjs` runs `node --test` and a source readability gate (1,000 lines,
+  160 characters per line). Existing offenders have per-file metrics in
+  `scripts/check-baseline.json`; no new offender or metric increase is allowed.
+  After reducing debt, run `node scripts/check.mjs --update-baseline` to ratchet
+  those allowances down (never up), then commit the baseline with the cleanup.
+  Sources include JS/MJS/CJS, CSS, HTML, JSON and TOML; generated/binary assets,
+  assets directories, generated `.impeccable` metadata, `.tools`, `.wrangler`, `node_modules` and goldens are excluded.
+  Markdown/prose and symlinks are not source. CI runs the same check on Node 24.
 - `node cloudflare/deploy.mjs --dry-run` prepares a deployment with zero network calls.
 - `cloudflare/smoke.mjs` checks local Wrangler APIs; `cloudflare/ui-smoke.mjs` checks local browser journeys. `cloudflare/parent-layout-smoke.mjs <dir>` verifies separate Parent navigation, three fitting kid tabs, date/field bounds and always-visible editor actions at 390×844, 360×740 and desktop, including connection creation screenshots. `cloudflare/practice-layout-smoke.mjs <dir>` checks 16/25/40-word headers at 390×844, 360×740 and desktop, simulates a 47px top safe area, verifies Fade fast-track, and captures Test/long-word Fade/4-letter Fade screens. It uses the same optional Playwright setup and disposable localhost Worker as UI smoke; actual iOS standalone still needs a device check. Keep localhost guards and Wrangler telemetry disabled.
 - Use text nodes for user data, parameterized SQL, origin/JSON checks, and bounded inputs. Do not weaken family isolation or parent authorization.
 
 ## Deployment
 
-- Worker setup: `cloudflare/deploy.md`; Node/Docker setup: `README.md`.
+- Worker setup: `cloudflare/deploy.md`.
 - The Worker uploader requires `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `SESSION_SECRET`, and `IP_HASH_SALT` in the environment. Do not commit credentials, family codes, backups, private addresses, or operator-specific configuration.
 - Optional Worker secret: `RESEND_API_KEY` (opt-in notifications only); shared sign-in uses `ACCOUNTS_SVC` and explicit default-off `FP_SIGNIN_*` vars; `EMAIL_FROM` is a var requiring a verified sender. Uploader configures hourly cron via schedules PUT. Without providers, code/PIN remains functional.
 - Keep `SESSION_SECRET` and `IP_HASH_SALT` stable across deployments. Domain configuration is separate from the uploader; use your own hostname.

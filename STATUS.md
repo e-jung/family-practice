@@ -37,7 +37,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 
 ## Release checklist
 
-1. `node --test` (all green).
+1. `npm run check` (tests and readability gate all green).
 2. Local Worker (`cloudflare/deploy.md` → "Local real Worker"), then `node cloudflare/smoke.mjs`, `node cloudflare/ui-smoke.mjs`, for layout changes `node cloudflare/practice-layout-smoke.mjs`, and for `legacy.js`/`sw.js` changes `node cloudflare/legacy-smoke.mjs` (starts its own Worker twice).
 3. Bump `VERSION` in `cloudflare/public/sw.js` for any shell change.
 4. `node cloudflare/deploy.mjs --dry-run`, then deploy with credentials.
@@ -55,6 +55,7 @@ Google was enabled after the first real Google round trip through shared Account
 ## Roadmap
 
 **Done**
+- Architecture phase 1 (2026-11-16): retired the separate LAN build at `lan-build-final`; added a zero-dependency check and Node 24 CI with a shrinking readability baseline.
 - Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email and Google sign-in on 2026-11-15).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
@@ -72,19 +73,21 @@ Google was enabled after the first real Google round trip through shared Account
 
 ## Debt
 
-From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). Fix order and target shape are pending an agreed `ARCHITECTURE.md`; no refactor starts before that.
+From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. Phase 1 guardrails and retirement are complete; later phases remain pending.
 
-1. **Oversized browser entry points.** `cloudflare/public/app.js` (1,632 lines) and `public/app.js` (1,548) exceed the 1,000-line limit and mix app state, speech, practice flows, progress charts and parent editing in one closure. Target: a small shell/router plus practice, progress and parent modules.
-2. **Two builds, duplicated logic.** The Worker and the LAN build keep parallel validators, storage/API workflows and practice UIs instead of differing only at adapters, and they already disagree (Worker integer/date validation is stricter; the LAN build accepts coercible IDs and normalizable invalid dates). The LAN build also lacks Learn, Review, PWA, sharing and sign-in. Open question: retire it or converge it on a shared core.
+1. **Oversized browser entry points.** `cloudflare/public/app.js` (1,632 lines) exceeds the 1,000-line limit and mixes app state, speech, practice flows, progress charts and parent editing in one closure. Target: a small shell/router plus practice, progress and parent modules.
+2. **Resolved 2026-11-16 — two builds.** The LAN server/UI, Piper adapter, tests and Docker files were retired after checking imports. `lan-build-final` preserves the final version; only the Worker remains supported. Shared `lib/practice.js` and its tests stay in use.
 3. **Spelling round has no explicit state machine.** Test/retry/reveal/advance lives in booleans, disabled controls, mutable counters and view-version checks. Target: a pure round reducer with named states and tested events, like `learn.js`.
-4. **Verse mastery rules exist three times.** Stars/thresholds (95/70, memory/first-letter ≥95) are implemented separately in `core.js` progress, the email digest and `server.js`, and repeated in UI copy. Target: one pure mastery function and policy constants used everywhere, with copy derived from them.
+4. **Verse mastery duplication remains.** Stars/thresholds (95/70, memory/first-letter ≥95) are implemented in `core.js` progress and the email digest, and repeated in UI copy. Retirement removed the third implementation in `server.js`; phase 3 still needs one pure policy used everywhere.
 5. **Tunables are literals.** Notification days/hours (`notifications.js`), voice budgets (`worker.js`), the 500/day email cap (`accounts.js`) and the 15-word review batch (`lib/practice.js`) need a code change to adjust. Target: one validated policy module with defaults.
 6. **Compressed one-line modules.** `accounts.js` (max line 1,229 chars), `sharing-ui.js` (1,369) and `emails.js` (1,208) hide their size from a line-count check. Target: readable formatting plus a max-line-length gate.
-7. **No single `check` command or CI.** `node --test` exists, but there is no lint/format config, no file-size gate and no CI workflow. Target: `npm run check` (tests, size and line-length with a shrinking baseline for current offenders) run locally and in CI.
+7. **Resolved 2026-11-16 — single check and CI.** `npm run check` runs all Node tests and source size/readability gates locally and in Node 24 CI. Existing offenders are explicitly recorded in `scripts/check-baseline.json`; allowances can only shrink. Oversized/compressed source cleanup remains debt 1 and 6.
 
 ## Decisions
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
+
+- **2026-11-16: One supported build, with enforced guardrails.** Retire the single-family Node/Docker LAN app; preserve its last source at `lan-build-final`. The Cloudflare Worker is the product and only supported deployment. Keep shared practice logic/tests and Worker speech. `npm run check` and Node 24 CI enforce tests plus 1,000-line/160-character source limits with a shrinking baseline, so existing debt is visible without permitting regressions. This implements phase 1 of the approved architecture; historical changelogs below describe the builds at their release dates.
 
 - **2026-11-15: The app is Spellami, at spellami.jesklabs.com.** Spell + French *ami*: a spelling friend. Replaces "Family Practice", which never matched the "spelling" listing, and "Spellwell", an existing trademarked spelling curriculum; no app or trademark uses Spellami. Internal identifiers (Worker `family-practice`, storage keys, the Accounts client id `spelling`) keep their names because renaming them would orphan family data or change account subjects. The old hostname stays on the same Worker rather than a separate redirect Worker, so there is no route-swap gap, and it hands each device's saved Family Code to the new origin's existing `/f/<code>` join page instead of making families retype it. Sender moves to `spellami@jesklabs.com` (nothing was verified for the old address yet).
 

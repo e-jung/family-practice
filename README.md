@@ -25,7 +25,7 @@ Cloud voice sends only spoken text to Cloudflare Workers AI, with device speech 
 Requires Node.js 24+, a Cloudflare account, Workers Static Assets, SQLite-backed Durable Objects, and Workers AI. No npm runtime dependencies or build step.
 
 ```sh
-node --test
+npm run check
 node cloudflare/deploy.mjs --dry-run  # no network calls
 ```
 
@@ -37,30 +37,17 @@ node cloudflare/deploy.mjs
 
 The uploader adds the `ACCOUNTS` / `AccountStore` binding using additive migration v4 and configures hourly cron (`0 * * * *`); it does not configure DNS or hostnames. The shared Accounts service owns Google and email-code authentication; Spellami keeps app-local family links keyed by the stable Accounts subject. Register this app’s exact callback with Accounts (see deployment guide). Notification Resend is optional, subject to its own quotas and configuration; no provider is contacted by dry-run/tests. See [the deployment guide](cloudflare/deploy.md) for token scopes, hostname setup, local Wrangler smoke tests, migrations, and free-tier speech quotas. See [PWA notes](cloudflare/PWA.md) for install/cache behavior and release versioning.
 
-## Self-host: Node / Docker (one family, trusted LAN)
+## Retired LAN build
 
-The legacy build uses Node.js 24's built-in SQLite and optional Wyoming/Piper speech. It is separate from the multi-family Worker and does not include its Learn/PWA features. New databases contain fictional Sam/Alex sample profiles.
-
-```sh
-HOST=127.0.0.1 PARENT_PIN=2468 node server.js
-# Open http://localhost:8088
-```
-
-No `npm install` needed. Set `DATA_DIR` to choose persistent storage and `PORT` to change the default 8088. The default host is `0.0.0.0`; use loopback for local-only access. This build's PIN is an editing gate, not public-internet authentication.
-
-Piper is optional; without it, device speech is used. Configure your own service with `PIPER_HOST=your-piper-host` (default empty), `PIPER_PORT=10200`, and optional `PIPER_VOICE=en_US-lessac-high`.
-
-```sh
-PARENT_PIN=2468 docker compose up -d --build
-```
-
-Compose publishes on loopback by default; set `LAN_BIND_IP` for a trusted LAN interface. Persist the `/data` volume and change the example PIN. Do not port-forward the LAN build.
+Spellami now has one build: the Cloudflare Worker. The unsupported single-family
+Node/Docker LAN build was retired on 2026-11-16; its final source is preserved at
+`lan-build-final`. Do not use that historical version for a public deployment.
 
 ## Backups and contributing
 
-Parent mode exports JSON/CSV and restores JSON transactionally. Import replaces current practice data, so export first. Keep codes/backups private. For Node filesystem backups, stop the app and copy its complete data directory, including SQLite sidecars.
+Parent mode exports JSON/CSV and restores JSON transactionally. Import replaces current practice data, so export first. Keep codes/backups private.
 
-Bug reports and pull requests are welcome. Read [AGENTS.md](AGENTS.md), use fictional fixtures, preserve both builds, and run `node --test`. Development and optional Chromium smoke checks are documented in [cloudflare/deploy.md](cloudflare/deploy.md). Report vulnerabilities through [GitHub private vulnerability reporting](SECURITY.md).
+Bug reports and pull requests are welcome. Read [AGENTS.md](AGENTS.md), use fictional fixtures, preserve the Worker build, and run `npm run check`. Development and optional Chromium smoke checks are documented in [cloudflare/deploy.md](cloudflare/deploy.md). Report vulnerabilities through [GitHub private vulnerability reporting](SECURITY.md).
 
 [MIT](LICENSE) · Copyright (c) 2026 Eric Jung.
 
