@@ -21,12 +21,13 @@ Last updated: 2026-11-16
 | `SESSION_SECRET` | Worker secret | Signs parent cookies. **Keep stable**; rotating it logs out all parents. |
 | `IP_HASH_SALT` | Worker secret | Salts hashed IPs for rate limits. Keep stable. |
 | `OPS_TOKEN` | Worker secret (optional) | Enables `/api/ops/stats`; 404 when unset. |
-| `ACCOUNTS_SVC` | Worker service binding → `jesklabs-accounts` / `SpellingClient` | Shared Accounts owns Google/email/SSO; stable subject keys app-local links. |
-| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment | Map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`; default `0`, so **a deploy without the switches turns sign-in off**. Production: `SIGNIN_EMAIL=1` and `SIGNIN_GOOGLE=1` (both since 2026-11-15), so **every production deploy must pass both `FP_SIGNIN_EMAIL=1 FP_SIGNIN_GOOGLE=1`**. |
+| `ACCOUNTS_SVC` | Profile `accounts` | Optional service/entrypoint binding; absent without a profile. Shared Accounts owns Google/email/SSO. |
+| `SIGNIN_EMAIL`, `SIGNIN_GOOGLE` | Instance profile `signin` | `jesklabs` enables both; neutral defaults disable both. Always select the profile for production. |
 | `RESEND_API_KEY` | Optional Worker secret (unset in production) | Opt-in notifications only; shared Accounts owns sign-in codes. Quota/verified domain required. |
-| `APP_ORIGIN` | Worker var | Canonical HTTPS notification-link/callback origin (`https://spellami.jesklabs.com`); self-hosters must override the hosted default. |
-| `LEGACY_HOSTS` | Worker var | Former hostnames that redirect to `APP_ORIGIN` (`spelling.jesklabs.com`); deployer override `FP_LEGACY_HOSTS`, empty disables. |
-| `EMAIL_FROM` | Worker var | Default `Spellami <hello@jesklabs.com>` (the shared Jesklabs sender); self-hosters must configure their verified sender. |
+| `APP_ORIGIN` | Profile `appOrigin` or deployer environment | Required canonical HTTPS origin for a real deploy; only dry-run may use a placeholder. |
+| `LEGACY_HOSTS` | Profile `legacyHosts` | Empty without a profile; hosted profile retains the former hostname. |
+| `EMAIL_FROM` | Profile `emailFrom` | Empty without a profile (notifications cannot send); hosted profile uses the verified shared sender. |
+| `SETTINGS` | Validated `cloudflare/settings.json` → Worker var | Voice, mail, notification schedule and review batch; change file and redeploy. |
 | `TTS_SPEAKER` | Worker var (optional) | Aura-1 speaker; default `asteria`. |
 | `CF_API_TOKEN`, `CF_ACCOUNT_ID` | Deployer environment only | Token needs Workers Scripts edit (+ zone Workers Routes/DNS for the custom domain). Never a Worker binding. |
 | Custom domains | Workers Custom Domains | `spellami.jesklabs.com` (canonical) and `spelling.jesklabs.com` (legacy), both on this Worker; attached once, `deploy.mjs` does not manage routes. Keep the legacy domain attached: printed codes, class QR codes and installed PWAs point at it. `workers_dev = false`. |
@@ -40,7 +41,7 @@ Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day gl
 1. `npm run check` (tests and readability gate all green).
 2. Local Worker (`cloudflare/deploy.md` → "Local real Worker"), then `node cloudflare/smoke.mjs`, `node cloudflare/ui-smoke.mjs`, for layout changes `node cloudflare/practice-layout-smoke.mjs`, and for `legacy.js`/`sw.js` changes `node cloudflare/legacy-smoke.mjs` (starts its own Worker twice).
 3. Bump `VERSION` in `cloudflare/public/sw.js` for any shell change.
-4. `node cloudflare/deploy.mjs --dry-run`, then deploy with credentials.
+4. `node cloudflare/deploy.mjs --instance jesklabs --dry-run`, then `node cloudflare/deploy.mjs --instance jesklabs` with secrets in the environment. Validate settings and verify the planned bindings before deploy.
 5. Production smoke against the hosted URL (creates and deletes two throwaway families; respects the 5/hour creation limit, so don't loop it). Set `SMOKE_EXPECT_AI=1`.
 6. Push `main`, add a changelog line below, and update "Live" if anything structural changed.
 
@@ -55,6 +56,7 @@ Google was enabled after the first real Google round trip through shared Account
 ## Roadmap
 
 **Done**
+- Architecture phase 2 (2026-11-16, local only): validated settings and optional instance profiles; hosted plan matches the old production metadata except SETTINGS. Not deployed.
 - Architecture phase 1 (2026-11-16): retired the separate LAN build at `lan-build-final`; added a zero-dependency check and Node 24 CI with a shrinking readability baseline.
 - Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email and Google sign-in on 2026-11-15).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
@@ -73,13 +75,13 @@ Google was enabled after the first real Google round trip through shared Account
 
 ## Debt
 
-From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. Phase 1 guardrails and retirement are complete; later phases remain pending.
+From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. Phases 1–2 (guardrails, retirement, settings and profiles) are implemented locally pending review/deployment; later phases remain pending.
 
 1. **Oversized browser entry points.** `cloudflare/public/app.js` (1,632 lines) exceeds the 1,000-line limit and mixes app state, speech, practice flows, progress charts and parent editing in one closure. Target: a small shell/router plus practice, progress and parent modules.
 2. **Resolved 2026-11-16 — two builds.** The LAN server/UI, Piper adapter, tests and Docker files were retired after checking imports. `lan-build-final` preserves the final version; only the Worker remains supported. Shared `lib/practice.js` and its tests stay in use.
 3. **Spelling round has no explicit state machine.** Test/retry/reveal/advance lives in booleans, disabled controls, mutable counters and view-version checks. Target: a pure round reducer with named states and tested events, like `learn.js`.
 4. **Verse mastery duplication remains.** Stars/thresholds (95/70, memory/first-letter ≥95) are implemented in `core.js` progress and the email digest, and repeated in UI copy. Retirement removed the third implementation in `server.js`; phase 3 still needs one pure policy used everywhere.
-5. **Tunables are literals.** Notification days/hours (`notifications.js`), voice budgets (`worker.js`), the 500/day email cap (`accounts.js`) and the 15-word review batch (`lib/practice.js`) need a code change to adjust. Target: one validated policy module with defaults.
+5. **Resolved (2026-11-16): tunables centralized.** Voice budgets, mail reservation cap, notification schedule and review batch now use validated `cloudflare/settings.json`, uploaded as `SETTINGS`; runtime falls back to defaults on invalid input.
 6. **Compressed one-line modules.** `accounts.js` (max line 1,229 chars), `sharing-ui.js` (1,369) and `emails.js` (1,208) hide their size from a line-count check. Target: readable formatting plus a max-line-length gate.
 7. **Resolved 2026-11-16 — single check and CI.** `npm run check` runs all Node tests and source size/readability gates locally and in Node 24 CI. Existing offenders are explicitly recorded in `scripts/check-baseline.json`; allowances can only shrink. Oversized/compressed source cleanup remains debt 1 and 6.
 
@@ -87,7 +89,7 @@ From the 2026-11-16 architecture audit against the operator's engineering rules 
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
 
-- **2026-11-16: One supported build, with enforced guardrails.** Retire the single-family Node/Docker LAN app; preserve its last source at `lan-build-final`. The Cloudflare Worker is the product and only supported deployment. Keep shared practice logic/tests and Worker speech. `npm run check` and Node 24 CI enforce tests plus 1,000-line/160-character source limits with a shrinking baseline, so existing debt is visible without permitting regressions. This implements phase 1 of the approved architecture; historical changelogs below describe the builds at their release dates.
+- **2026-11-16: LAN build retired; one Worker.** It was undeployed, duplicated rules and had already drifted. Retire the single-family Node/Docker LAN app; preserve its last source at `lan-build-final`. The Cloudflare Worker is the product and only supported deployment. Keep shared practice logic/tests and Worker speech. `npm run check` and Node 24 CI enforce tests plus 1,000-line/160-character source limits with a shrinking baseline, so existing debt is visible without permitting regressions. This implements phase 1 of the approved architecture; historical changelogs below describe the builds at their release dates.
 
 - **2026-11-15: The app is Spellami, at spellami.jesklabs.com.** Spell + French *ami*: a spelling friend. Replaces "Family Practice", which never matched the "spelling" listing, and "Spellwell", an existing trademarked spelling curriculum; no app or trademark uses Spellami. Internal identifiers (Worker `family-practice`, storage keys, the Accounts client id `spelling`) keep their names because renaming them would orphan family data or change account subjects. The old hostname stays on the same Worker rather than a separate redirect Worker, so there is no route-swap gap, and it hands each device's saved Family Code to the new origin's existing `/f/<code>` join page instead of making families retype it. Sender moves to `spellami@jesklabs.com` (nothing was verified for the old address yet).
 

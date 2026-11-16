@@ -31,7 +31,7 @@ test('hour selection uses IANA local weekday/hour, opt-in, invalid settings and 
 const message = {to:'parent@example.test',subject:'Practice',text:'A little practice',html:'<p>A little practice</p>',unsubscribe:'https://example.test/unsubscribe/token'};
 test('email makes one Resend request with unsubscribe headers and no credential leakage', async () => {
   let calls=0;
-  const result=await sendEmail({RESEND_API_KEY:'private-key'},message,async (url,options)=>{
+  const result=await sendEmail({EMAIL_FROM:'Practice <hello@example.test>',RESEND_API_KEY:'private-key'},message,async (url,options)=>{
     calls++;
     assert.equal(url,'https://api.resend.com/emails');
     assert.equal(options.headers.Authorization,'Bearer private-key');
@@ -44,18 +44,25 @@ test('email makes one Resend request with unsubscribe headers and no credential 
   assert.deepEqual(result,{sent:true});assert.equal(calls,1);
   for(const status of [429,500]) {
     calls=0;
-    assert.deepEqual(await sendEmail({RESEND_API_KEY:'key'},message,async()=>{calls++;return new Response('secret body',{status});}),{sent:false,reason:'email_rejected',status});
+    assert.deepEqual(await sendEmail({EMAIL_FROM:'Practice <hello@example.test>',RESEND_API_KEY:'key'},
+message,async()=>{calls++;return new Response('secret body',{status});}),{sent:false,reason:'email_rejected',
+status});
+
     assert.equal(calls,1);
   }
-  assert.deepEqual(await sendEmail({RESEND_API_KEY:'key'},message,async()=>{throw Error('secret');}),{sent:false,reason:'email_unavailable'});
+  assert.deepEqual(await sendEmail({EMAIL_FROM:'Practice <hello@example.test>',RESEND_API_KEY:'key'},
+message,async()=>{throw Error('secret');}),{sent:false,reason:'email_unavailable'});
+
   assert.deepEqual(await sendEmail({},message,()=>{throw Error('network forbidden');}),{sent:false,reason:'email_unconfigured'});
 });
 
 test('local sink returns content for account-owned persistence, never calls provider; production refuses sink', async () => {
-  const sink=await sendEmail({EMAIL_TEST_SINK:'1',APP_ORIGIN:'http://localhost:8792'},message,()=>{throw Error('network forbidden');});
+  const sink=await sendEmail({EMAIL_FROM:'Practice <hello@example.test>',EMAIL_TEST_SINK:'1',
+APP_ORIGIN:'http://localhost:8792'},message,()=>{throw Error('network forbidden');});
+
   assert.equal(sink.test,true);assert.deepEqual(sink.message.to,[message.to]);
   for(const origin of [undefined,'https://spelling.example.test','http://localhost.evil.test']) {
-    await assert.rejects(sendEmail({EMAIL_TEST_SINK:'1',APP_ORIGIN:origin},message),/local-only/);
+    await assert.rejects(sendEmail({EMAIL_FROM:'Practice <hello@example.test>',EMAIL_TEST_SINK:'1',APP_ORIGIN:origin},message),/local-only/);
   }
   await assert.rejects(sendEmail({}, {...message,subject:'Bad\r\nBcc: someone@example.test'}));
   await assert.rejects(sendEmail({}, {...message,to:'x@example.test\n'}));

@@ -23,7 +23,18 @@ test('weekly digest golden text covers lists, accuracy, five tricky words, revie
 function fixture(){
  const account={hash:'a'.repeat(64),email:'parent@example.test',families:[{hash:'f'.repeat(64),name:'Example family'}],email_prefs:{weekly:true,review:true,classUpdates:true,timezone:'America/Los_Angeles'}};
  const claims=new Map(),messages=[],calls=[];let week='week-1';
- const env={SESSION_SECRET:'notification-test-secret-32-characters',APP_ORIGIN:'http://localhost:8792',EMAIL_TEST_SINK:'1',ACCOUNTS:{idFromName:n=>n,get:()=>({fetch:async r=>{const p=new URL(r.url).pathname,b=await r.json();calls.push(p);if(p==='/list')return Response.json({accounts:b.offset?[]:[account]});if(p==='/claim'){const key=b.hash+b.key;const claimed=claims.get(key)!==b.value;claims.set(key,b.value);return Response.json({claimed});}if(p==='/sink')messages.push(b.message);return Response.json({ok:true});}})},FAMILY:{idFromName:n=>n,get:()=>({fetch:async r=>Response.json(new URL(r.url).pathname.endsWith('follows')?{follows:[{slug:'class-link'}]}:{name:'Example family',kids:[{name:'Sam',streak:2,practiceDays:3,lists:['Autumn week'],reviewDue:3,verseStarsChange:2,attempts:[{first_try:1,correct:1},{first_try:1,correct:0}]}]})})},SHARES:{idFromName:n=>n,get:()=>({fetch:async()=>Response.json({classes:[{slug:'class-link',available:true,latest:{week_id:week}}]})})}};
+ const env={EMAIL_FROM:'Practice <hello@example.test>',SESSION_SECRET:'notification-test-secret-32-characters',
+APP_ORIGIN:'http://localhost:8792',EMAIL_TEST_SINK:'1',ACCOUNTS:{idFromName:n=>n,get:()=>({fetch:async r=>{const p=new URL(r.url).pathname,
+b=await r.json();
+calls.push(p);
+if(p==='/list')return Response.json({accounts:b.offset?[]:[account]});
+if(p==='/claim'){const key=b.hash+b.key;const claimed=claims.get(key)!==b.value;claims.set(key,
+b.value);return Response.json({claimed});}if(p==='/sink')messages.push(b.message);return Response.json({ok:true});}})},
+FAMILY:{idFromName:n=>n,get:()=>({fetch:async r=>Response.json(new URL(r.url).pathname.endsWith('follows')?{follows:[{slug:'class-link'}]}:{name:'Example family',
+kids:[{name:'Sam',streak:2,practiceDays:3,lists:['Autumn week'],reviewDue:3,verseStarsChange:2,
+attempts:[{first_try:1,correct:1},{first_try:1,correct:0}]}]})})},SHARES:{idFromName:n=>n,
+get:()=>({fetch:async()=>Response.json({classes:[{slug:'class-link',available:true,latest:{week_id:week}}]})})}};
+
  return {env,account,messages,calls,setWeek:v=>{week=v;}};
 }
 test('hourly cron claims local date, dedupes class updates across replay, respects unsubscribe',async()=>{

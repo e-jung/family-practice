@@ -58,17 +58,12 @@ class_name = "AccountStore"
 tag = "v4"
 new_sqlite_classes = ["AccountStore"]
 
-[[services]]
-binding = "ACCOUNTS_SVC"
-service = "jesklabs-accounts"
-entrypoint = "SpellingClient"
-
+# Instance identity is supplied by deploy.mjs --instance, never by defaults.
 [vars]
 SIGNIN_EMAIL = "0"
 SIGNIN_GOOGLE = "0"
-APP_ORIGIN = "https://spellami.jesklabs.com"
-LEGACY_HOSTS = "spelling.jesklabs.com"
-EMAIL_FROM = "Spellami <hello@jesklabs.com>"
+LEGACY_HOSTS = ""
+EMAIL_FROM = ""
 
 [triggers]
 crons = ["0 * * * *"]

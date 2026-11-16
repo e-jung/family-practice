@@ -1,3 +1,4 @@
+import {defaults} from '../settings.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scheduleWord, reviewBank, normalize, REVIEW_INTERVALS} from '../../lib/practice.js';
@@ -24,7 +25,11 @@ test('review queue caps at 15 and sorts lowest box then most misses',()=>{
   const entries=Array.from({length:20},(_,i)=>({key:String(i),box:i%6+1,misses:i,due:'2026-11-14'}));
   entries.push({key:'later',box:3,misses:0,due:'2026-11-16'});
   const result=reviewBank(entries,'2026-11-14T00:00:01Z');
-  assert.equal(result.due.length,15);assert.equal(result.due[0].key,'18');assert.equal(result.nextDue,'2026-11-16');assert.equal(result.dueSoon.length,1);
+  assert.equal(result.due.length,defaults.reviewBatch);
+assert.equal(result.due[0].key,'18');
+assert.equal(result.nextDue,'2026-11-16');
+assert.equal(result.dueSoon.length,1);
+
   assert.equal(Object.values(result.counts).reduce((a,b)=>a+b),21);
 });
 test('backend normalizes across lists, isolates kids and supports cross-list review rounds',async t=>{

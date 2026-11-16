@@ -3,6 +3,7 @@ import test from 'node:test';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {defaults} from '../settings.js';
 import { deploy, buildPlan, metadataFor, MODULES } from '../deploy.mjs';
 test('raw deployer builds correct asset, module, migration and secret requests without live network', async () => {
 const root = await mkdtemp(join(tmpdir(), 'family-deploy-'));
@@ -15,12 +16,16 @@ try {
   await writeFile(join(root, 'cloudflare/public/app.js'), 'export {};');
   await writeFile(join(root, 'cloudflare/public/_headers'), '/*\n  X-Test: yes\n');
   await writeFile(join(root, 'cloudflare/public/_redirects'), '/old / 302\n');
+  await writeFile(join(root, 'cloudflare/settings.json'), JSON.stringify(defaults));
+  await mkdir(join(root, 'cloudflare/instances'));
+  const instance = JSON.parse(await readFile(new URL('../instances/jesklabs.json', import.meta.url)));
+  await writeFile(join(root, 'cloudflare/instances/jesklabs.json'), JSON.stringify(instance));
   const plan = await buildPlan(root);
   assert.equal(Object.keys(plan.manifest).length, 2);
   assert.equal(plan.config._headers, '/*\n  X-Test: yes\n');
   assert.ok(!plan.manifest['/_headers'] && !plan.manifest['/_redirects']);
   assert.ok(Object.values(plan.manifest).every(x => /^[a-f0-9]{32}$/.test(x.hash)));
-  const dryRun = await deploy({ root, dryRun: true, env: {}, log() {}, fetchImpl() { throw Error('Network forbidden'); } });
+  const dryRun = await deploy({ root, instance: 'jesklabs', dryRun: true, env: {}, log() {}, fetchImpl() { throw Error('Network forbidden'); } });
   assert.equal(dryRun.metadata_if_first_deployment.observability.logs.invocation_logs, false, 'bearer URLs must not enter invocation logs');
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/mcp.js'));
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/sharing.js'));
@@ -31,8 +36,8 @@ try {
   assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name==='APP_ORIGIN').text,'https://spellami.jesklabs.com');
   assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name==='LEGACY_HOSTS').text,'spelling.jesklabs.com');
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/legacy.js'));
-  for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name===name).text,'0');
-  const enabled=metadataFor(plan,'jwt','v4',{FP_SIGNIN_EMAIL:'1',FP_SIGNIN_GOOGLE:'1'});for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(enabled.bindings.find(b=>b.name===name).text,'1');
+  for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(dryRun.metadata_if_live_v4.bindings.find(b=>b.name===name).text,'1');
+  const enabled=metadataFor(plan,'jwt','v4',{},instance);for(const name of ['SIGNIN_EMAIL','SIGNIN_GOOGLE'])assert.equal(enabled.bindings.find(b=>b.name===name).text,'1');
   assert.deepEqual(dryRun.schedules, [{cron:'0 * * * *'}]);
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/accounts.js'));
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/emails.js'));
@@ -44,7 +49,7 @@ try {
   for (const mode of ['first', 'upgrade', 'live-v2', 'live-v3', 'repeat', 'fallback', 'allcached']) {
     const calls = [];
     let uploads = 0;
-    const result = await deploy({ root, env, log() {}, fetchImpl: async (url, options) => {
+    const result = await deploy({ root, instance: 'jesklabs', env, log() {}, fetchImpl: async (url, options) => {
       const path = new URL(url).pathname;
       calls.push([path, options]);
       if (path.endsWith('/settings')) {
@@ -104,9 +109,9 @@ try {
     assert.ok(calls.at(-1)[0].endsWith('/schedules'));
   }
   let calls = 0;
-  await assert.rejects(deploy({ root, env, log() {}, fetchImpl: async () => { calls++; return response({ migration_tag: 'v5' }); } }), /Unexpected Durable Object/);
+  await assert.rejects(deploy({ root, instance: 'jesklabs', env, log() {}, fetchImpl: async () => { calls++; return response({ migration_tag: 'v5' }); } }), /Unexpected Durable Object/);
   assert.equal(calls, 1);
-  await assert.rejects(deploy({ root, env, log() {}, fetchImpl: async () => response({}, 403) }), /HTTP 403/);
+  await assert.rejects(deploy({ root, instance: 'jesklabs', env, log() {}, fetchImpl: async () => response({}, 403) }), /HTTP 403/);
   await symlink('/etc/passwd', join(root, 'cloudflare/public/secret-link'));
   await assert.rejects(buildPlan(root), /symlink/);
   console.log('PASS: no-network dry-run, manifest/config exclusion, module paths, base64 buckets/JWT auth, first migration, repeat/fallback migration skip, cached assets, secret preservation/PUTs, unknown-tag/403 fail-closed, symlink rejection.');

@@ -6,13 +6,13 @@
   },
   "files": {
     "cloudflare/accounts.js": {
-      "lines": 94,
-      "longLines": 47,
-      "maxLength": 1229,
-      "excessCharacters": 11701
+      "lines": 114,
+      "longLines": 45,
+      "maxLength": 1219,
+      "excessCharacters": 10564
     },
     "cloudflare/accounts.test.js": {
-      "lines": 344,
+      "lines": 345,
       "longLines": 51,
       "maxLength": 712,
       "excessCharacters": 3719
@@ -24,16 +24,16 @@
       "excessCharacters": 629
     },
     "cloudflare/core.js": {
-      "lines": 928,
+      "lines": 929,
       "longLines": 33,
       "maxLength": 446,
       "excessCharacters": 2782
     },
     "cloudflare/deploy.mjs": {
-      "lines": 199,
-      "longLines": 2,
-      "maxLength": 283,
-      "excessCharacters": 143
+      "lines": 244,
+      "longLines": 1,
+      "maxLength": 180,
+      "excessCharacters": 20
     },
     "cloudflare/emails.js": {
       "lines": 114,
@@ -72,7 +72,7 @@
       "excessCharacters": 1987
     },
     "cloudflare/notifications.js": {
-      "lines": 26,
+      "lines": 28,
       "longLines": 7,
       "maxLength": 566,
       "excessCharacters": 1382
@@ -198,10 +198,10 @@
       "excessCharacters": 558
     },
     "cloudflare/test/deploy.test.js": {
-      "lines": 132,
+      "lines": 137,
       "longLines": 8,
       "maxLength": 289,
-      "excessCharacters": 364
+      "excessCharacters": 355
     },
     "cloudflare/test/email-goldens.test.js": {
       "lines": 32,
@@ -210,10 +210,10 @@
       "excessCharacters": 90
     },
     "cloudflare/test/emails.test.js": {
-      "lines": 62,
-      "longLines": 3,
+      "lines": 69,
+      "longLines": 2,
       "maxLength": 262,
-      "excessCharacters": 132
+      "excessCharacters": 114
     },
     "cloudflare/test/legacy.test.js": {
       "lines": 74,
@@ -228,19 +228,19 @@
       "excessCharacters": 1322
     },
     "cloudflare/test/notifications.test.js": {
-      "lines": 42,
+      "lines": 53,
       "longLines": 10,
-      "maxLength": 982,
-      "excessCharacters": 1975
+      "maxLength": 566,
+      "excessCharacters": 1155
     },
     "cloudflare/test/ops-deploy.test.js": {
       "lines": 23,
       "longLines": 2,
       "maxLength": 340,
-      "excessCharacters": 267
+      "excessCharacters": 251
     },
     "cloudflare/test/ops.test.js": {
-      "lines": 82,
+      "lines": 83,
       "longLines": 2,
       "maxLength": 733,
       "excessCharacters": 600
@@ -258,13 +258,13 @@
       "excessCharacters": 1510
     },
     "cloudflare/test/srs.test.js": {
-      "lines": 111,
+      "lines": 116,
       "longLines": 3,
       "maxLength": 203,
       "excessCharacters": 80
     },
     "cloudflare/test/tts.test.js": {
-      "lines": 135,
+      "lines": 141,
       "longLines": 4,
       "maxLength": 285,
       "excessCharacters": 242
@@ -276,7 +276,7 @@
       "excessCharacters": 250
     },
     "cloudflare/tts.js": {
-      "lines": 120,
+      "lines": 121,
       "longLines": 4,
       "maxLength": 203,
       "excessCharacters": 87
@@ -288,10 +288,10 @@
       "excessCharacters": 1788
     },
     "cloudflare/worker.js": {
-      "lines": 236,
-      "longLines": 40,
+      "lines": 247,
+      "longLines": 39,
       "maxLength": 517,
-      "excessCharacters": 3862
+      "excessCharacters": 3840
     }
   }
 }

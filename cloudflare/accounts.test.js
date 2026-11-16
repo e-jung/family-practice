@@ -1,3 +1,4 @@
+import {defaults} from './settings.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
@@ -328,9 +329,9 @@ test('optional-mail quotas, class/review claim checks and delivery deduplication
   assert.equal((await f.store('/claim',{hash,key,value:'first',familyHashes:[family]})).body.claimed,false);
  }
  assert.equal((await f.store('/claim',{hash,key:'review',value:'second',familyHashes:['unlinked']})).body.claimed,false);
- for(let i=0;i<500;i++)assert.equal((await f.store('/mail-reserve')).status,200);
+ for(let i=0;i<defaults.mailDaily;i++)assert.equal((await f.store('/mail-reserve')).status,200);
  assert.equal((await f.store('/mail-reserve')).status,429);await f.store('/mail-failed');
- assert.deepEqual((await f.store('/stats')).body.daily.map(({sent,failed})=>({sent,failed})),[{sent:500,failed:1}]);
+ assert.deepEqual((await f.store('/stats')).body.daily.map(({sent,failed})=>({sent,failed})),[{sent:defaults.mailDaily,failed:1}]);
  f.db.prepare('UPDATE account_limits SET until=?').run(Date.now()-1);assert.equal((await f.store('/mail-reserve')).status,200);
 });
 

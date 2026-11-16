@@ -1,3 +1,4 @@
+import {defaults} from '../settings.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,emptyFixture} from '../fixture-support.js';
@@ -50,7 +51,7 @@ test('daily ops counts synthesis, cache hits, quota rejections and PIN lockout e
   assert.equal((await f.req('/api/tts?text=hello')).status,200);
   assert.equal((await f.req('/api/tts?text=hello')).status,200);
   const registry=[...f.databases].find(([k])=>k==='registry')[1].db;
-  registry.prepare("UPDATE limits SET count=6000 WHERE key LIKE 'tts:global:%'").run();
+  registry.prepare("UPDATE limits SET count=? WHERE key LIKE 'tts:global:%'").run(defaults.voice.globalDaily);
   assert.equal((await f.req('/api/tts?text=uncached')).status,429);
   for(let i=0;i<10;i++) assert.equal((await f.req('/api/parent/unlock',{pin:'0000'})).status,401);
   assert.equal((await f.req('/api/parent/unlock',{pin:'0000'})).status,429);

@@ -1,3 +1,4 @@
+import {defaults} from '../settings.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {emptyFixture} from '../fixture-support.js';
@@ -30,8 +31,10 @@ test('TTS validates family before cache, trims text, shares cached bytes across 
 });
 test('TTS rejects empty, oversized, unsupported language; accepts 300 characters',async t=>{
   const f=await setup(t);
-  for(const query of ['', '?text=%20%20','?text='+ 'x'.repeat(301),'?text=hello&lang=fr'])assert.equal((await f.req('/api/tts'+query)).status,400);
-  assert.equal(f.getCalls(),0);assert.equal((await f.req('/api/tts?text='+ 'x'.repeat(300))).status,200);
+  for(const query of ['', '?text=%20%20','?text='+ 'x'.repeat(defaults.voice.request+1),
+'?text=hello&lang=fr'])assert.equal((await f.req('/api/tts'+query)).status,400);
+
+  assert.equal(f.getCalls(),0);assert.equal((await f.req('/api/tts?text='+ 'x'.repeat(defaults.voice.request))).status,200);
 });
 test('TTS deduplicates concurrent identical synthesis and quota reservations',async t=>{
   const f=await setup(t);let calls=0;
@@ -42,7 +45,7 @@ test('TTS deduplicates concurrent identical synthesis and quota reservations',as
 test('TTS global, family and hashed-IP character caps do not block cached speech',async t=>{
   const f=await setup(t);await f.req('/api/tts?text=cached');
   const db=f.databases.get('registry').db;
-  for(const [pattern,count] of [["tts:global:%",6000],["tts:family:%",1500],["tts:ip:%",2000]]) {
+  for(const [pattern,count] of [["tts:global:%",defaults.voice.globalDaily],["tts:family:%",defaults.voice.familyDaily],["tts:ip:%",defaults.voice.ipHourly]]) {
     db.prepare('UPDATE limits SET count=? WHERE key LIKE ?').run(count,pattern);
     const result=await f.req('/api/tts?text=new-'+count);assert.equal(result.status,429);assert.equal(result.body.error,'voice_quota');
     assert.equal((await f.req('/api/tts?text=cached')).status,200);
@@ -102,7 +105,10 @@ test('Durable cache miss, LRU eviction, replacement accounting and clip validati
 test('Character quota allows exact limit, rejects overshoot atomically and resets at UTC midnight/hour expiry',async t=>{
   const f=await setup(t);await f.req('/api/tts?text=seed');
   const db=f.databases.get('registry').db;
-  for(const [pattern,cap] of [['tts:global:%',6000],['tts:family:%',1500],['tts:ip:%',2000]]) {
+  for(const [pattern,cap] of [
+    ['tts:global:%',defaults.voice.globalDaily], ['tts:family:%',defaults.voice.familyDaily],
+    ['tts:ip:%',defaults.voice.ipHourly],
+  ]) {
     db.exec("UPDATE limits SET count=0 WHERE key LIKE 'tts:%'");
     db.prepare('UPDATE limits SET count=? WHERE key LIKE ?').run(cap-3,pattern);
     assert.equal((await f.req('/api/tts?text='+encodeURIComponent(pattern))).status,429);
@@ -130,6 +136,6 @@ test('Cache outages leave voice usable and do not bypass quota',async t=>{
   globalThis.caches.default={match(){throw Error('edge down');},put(){throw Error('edge down');}};
   f.env.TTS_CACHE={idFromName:n=>n,get:()=>({fetch(){throw Error('DO down');}})};
   assert.equal((await f.req('/api/tts?text=outage')).status,200);
-  f.databases.get('registry').db.exec("UPDATE limits SET count=6000 WHERE key LIKE 'tts:global:%'");
+  f.databases.get('registry').db.prepare("UPDATE limits SET count=? WHERE key LIKE 'tts:global:%'").run(defaults.voice.globalDaily);
   assert.equal((await f.req('/api/tts?text=outage')).status,429);assert.equal(f.getCalls(),1);
 });

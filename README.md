@@ -29,11 +29,18 @@ npm run check
 node cloudflare/deploy.mjs --dry-run  # no network calls
 ```
 
-Set `CF_API_TOKEN` and `CF_ACCOUNT_ID`, and provide Worker secrets `SESSION_SECRET` and `IP_HASH_SALT` (each at least 32 characters). **Keep SESSION_SECRET stable** across releases. Optional `OPS_TOKEN` enables private aggregate stats. Optional shared identity uses an `ACCOUNTS_SVC` service binding and explicit `FP_SIGNIN_*` feature flags (off by default), not this app’s own Google OAuth client or Resend sign-in delivery. Optional `RESEND_API_KEY` is only for opted-in practice notifications. Set `EMAIL_FROM` to a sender verified with Resend (default `Spellami <hello@jesklabs.com>` must be changed for your domain). Set `APP_ORIGIN` to your canonical HTTPS origin for notification links and authentication callbacks. Without shared identity configured, code/PIN-only use still works. Then:
+Set `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `SESSION_SECRET` and `IP_HASH_SALT` (secrets at least 32 characters). Keep both secrets stable. Optional `OPS_TOKEN` enables private aggregate stats; optional `RESEND_API_KEY` delivers opted-in notifications only.
+
+Tune operational values in `cloudflare/settings.json` (validated against `cloudflare/settings.js` on deploy and Worker load). Copy `cloudflare/instances/jesklabs.json` to your own named profile and change `appOrigin`, `emailFrom`, `legacyHosts`, `accounts` and `signin`. Omit `accounts` and set both sign-in switches false for code/PIN-only hosting. The sender must be verified with Resend. Without a profile, identity is neutral: no legacy hosts, no Accounts service, no sign-in and no notification sender. Supply your canonical HTTPS `APP_ORIGIN` in the environment for a profile-free deployment; dry-run alone may use a placeholder.
+
+Hosted-instance production command (with secrets in the environment):
 
 ```sh
-node cloudflare/deploy.mjs
+node cloudflare/deploy.mjs --instance jesklabs --dry-run
+node cloudflare/deploy.mjs --instance jesklabs
 ```
+
+Use `--instance your-profile` for your own deployment (`--instance=your-profile` also works). Settings changes take effect after redeploy; invalid settings abort before any network call, leaving the last good deployment running. The Worker falls back to defaults and logs once if its SETTINGS binding is missing or invalid.
 
 The uploader adds the `ACCOUNTS` / `AccountStore` binding using additive migration v4 and configures hourly cron (`0 * * * *`); it does not configure DNS or hostnames. The shared Accounts service owns Google and email-code authentication; Spellami keeps app-local family links keyed by the stable Accounts subject. Register this app’s exact callback with Accounts (see deployment guide). Notification Resend is optional, subject to its own quotas and configuration; no provider is contacted by dry-run/tests. See [the deployment guide](cloudflare/deploy.md) for token scopes, hostname setup, local Wrangler smoke tests, migrations, and free-tier speech quotas. See [PWA notes](cloudflare/PWA.md) for install/cache behavior and release versioning.
 

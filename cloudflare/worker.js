@@ -1,3 +1,4 @@
+import {settingsFor} from './runtime-settings.js';
 import {scheduledEmails} from './notifications.js';
 import {routeAuth,authConfig,accountSession,accountRequest,linkFamily,accountsRpc} from './accounts.js';
 export {AccountStore} from './accounts.js';
@@ -61,7 +62,8 @@ export class FamilyDatabase {
   }
 }
 export class RegistryLimits {
-  constructor(ctx) {
+  constructor(ctx, env = {}) {
+    this.settings = settingsFor(env);
     this.ctx=ctx;this.sql=ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS ops_families(hash TEXT PRIMARY KEY,created INTEGER NOT NULL,active TEXT NOT NULL); CREATE TABLE IF NOT EXISTS ops_family_days(hash TEXT NOT NULL,day TEXT NOT NULL,test INTEGER NOT NULL,learn INTEGER NOT NULL,verse INTEGER NOT NULL,pin_lockouts INTEGER NOT NULL,PRIMARY KEY(hash,day)); CREATE TABLE IF NOT EXISTS ops_voice(day TEXT PRIMARY KEY,synthesized_characters INTEGER NOT NULL DEFAULT 0,cache_hits INTEGER NOT NULL DEFAULT 0,quota_429 INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL)');
@@ -108,10 +110,15 @@ export class RegistryLimits {
         if((get('mcp:ip:'+ip)?.count||0)>=240 || (get('mcp:global')?.count||0)>=2400)return new Response(JSON.stringify({error:'Too many assistant requests'}),{status:429,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':'60'}});
         bump('mcp:ip:'+ip,60000);bump('mcp:global',60000);
       } else if(kind==='tts') {
-        if(!/^[a-f0-9]{64}$/.test(family) || !Number.isInteger(characters) || characters<1 || characters>300) return json({error:'Invalid limit'},400);
+        const budget = this.settings.voice;
+        if (!/^[a-f0-9]{64}$/.test(family) || !Number.isInteger(characters) ||
+            characters < 1 || characters > budget.request) return json({error:'Invalid limit'},400);
         const day=new Date(now).toISOString().slice(0,10), until=Date.parse(day+'T00:00:00Z')+86400000;
         const globalKey='tts:global:'+day+':chars', familyKey='tts:family:'+family+':'+day+':chars', ipKey='tts:ip:'+ip+':chars';
-        if((get(globalKey)?.count||0)+characters>6000 || (get(familyKey)?.count||0)+characters>1500 || (get(ipKey)?.count||0)+characters>2000) return json({error:'voice_quota'},429);
+        if ((get(globalKey)?.count||0)+characters > budget.globalDaily ||
+            (get(familyKey)?.count||0)+characters > budget.familyDaily ||
+            (get(ipKey)?.count||0)+characters > budget.ipHourly) return json({error:'voice_quota'},429);
+
         // Serialized character reservation before inference. Failed inference counts too.
         for(const [key,expiry] of [[globalKey,until],[familyKey,until],[ipKey,now+3600000]]) {
           this.sql.exec('INSERT INTO limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=count+excluded.count',key,characters,expiry);
@@ -128,8 +135,12 @@ export class RegistryLimits {
   }
 }
 export default {
-  scheduled(controller,env,ctx){ctx.waitUntil(scheduledEmails(env,new Date(controller.scheduledTime)));},
+  scheduled(controller,env,ctx) {
+    settingsFor(env);
+    ctx.waitUntil(scheduledEmails(env,new Date(controller.scheduledTime)));
+  },
   async fetch(request,env,ctx) {
+    settingsFor(env);
     const url=new URL(request.url);
     const moved=legacyResponse(request,env);if(moved)return moved;
     const cleanHeaders=new Headers(request.headers);cleanHeaders.delete('X-Internal-Account-Parent');request=new Request(request,{headers:cleanHeaders});

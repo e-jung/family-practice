@@ -124,7 +124,7 @@ Requires Node.js 24+. From the repository root:
 ```sh
 npm run check
 node --check cloudflare/deploy.mjs
-node cloudflare/deploy.mjs --dry-run
+node cloudflare/deploy.mjs --instance jesklabs --dry-run
 ```
 
 The zero-dependency uploader uses Node built-ins only. Dry-run performs **zero
@@ -184,12 +184,12 @@ build. Before a future authorized deployment, provide:
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
 | `IP_HASH_SALT` | Independent stable random secret, at least 32 characters |
 | `OPS_TOKEN` | Optional independent bearer secret for aggregate operator stats |
-| `ACCOUNTS_SVC` | Optional Worker service binding to shared Accounts; required when enabling sign-in |
-| `FP_SIGNIN_EMAIL`, `FP_SIGNIN_GOOGLE` | Deployer environment switches (`1` to enable); map to Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`, default `0` |
 | `RESEND_API_KEY` | Optional Resend API key for opted-in notifications only |
-| `APP_ORIGIN` | Canonical HTTPS app origin used for notification links and auth callbacks; default `https://spellami.jesklabs.com`; self-hosters must override |
-| `LEGACY_HOSTS` | Comma-separated former hostnames bound to this Worker that redirect to `APP_ORIGIN` (`cloudflare/legacy.js`); uploader default `spelling.jesklabs.com`, override with `FP_LEGACY_HOSTS` (empty disables) |
-| `EMAIL_FROM` | Sender var; default `Spellami <hello@jesklabs.com>`; use your verified domain |
+| `APP_ORIGIN` | Canonical HTTPS origin if not supplied by an instance profile; required for real deployment |
+
+Instance identity comes exclusively from `cloudflare/instances/<name>.json`: `appOrigin`, `emailFrom`, `legacyHosts`, optional `accounts: {service, entrypoint}`, and `signin: {email, google}`. The hosted profile is `jesklabs`; copy it and customize it for self-hosting. Without a profile: no legacy hosts, no Accounts service binding, both sign-in switches off, and no sender (notification delivery disabled). `APP_ORIGIN` may come from the environment; a dry run may use `https://example.invalid`, but a real deploy refuses a missing origin. `TTS_SPEAKER` retains its existing default.
+
+Operational settings live in `cloudflare/settings.json`: voice budgets, daily mail reservations, notification days/hours, and review batch. `settings.js` owns the schema/defaults. The uploader validates before any network call and uploads JSON as plain-text `SETTINGS`; invalid settings abort. The Worker validates once per isolate and falls back to defaults with one error log. Edit and redeploy to reload; no live settings editor is provided.
 
 **`PARENT_PIN` is not used or required.** Each parent chooses their own PIN.
 Generate the two secrets locally (e.g. 32 random bytes encoded as hex), save them
@@ -197,9 +197,9 @@ in your password manager, and reuse on subsequent deploys. Changing
 SESSION_SECRET invalidates sessions; changing IP_HASH_SALT resets IP buckets.
 The script does not read `.env` or persist credentials and never logs secrets.
 
-When deployment is authorized, run `node cloudflare/deploy.mjs` with those four
+When deployment is authorized, run `node cloudflare/deploy.mjs --instance jesklabs` with those four
 variables already set securely. This immediately uploads/deploys the Worker and
-assets, then writes **SESSION_SECRET and IP_HASH_SALT**, plus **OPS_TOKEN and RESEND_API_KEY only when supplied**, as Worker secrets. `EMAIL_FROM`, `APP_ORIGIN` are plain-text vars (not secrets). Deployer `FP_SIGNIN_EMAIL` / `FP_SIGNIN_GOOGLE` map to plain-text Worker `SIGNIN_EMAIL` / `SIGNIN_GOOGLE` (default `0`). Set APP_ORIGIN to your canonical HTTPS app origin. Omitted optional secrets preserve existing values, not disable a provider; disable sign-in with its feature vars; remove notification credentials explicitly to disable notification delivery. The uploader then PUTs the hourly schedule to `/workers/scripts/family-practice/schedules` with `[{"cron":"0 * * * *"}]`; this replaces that Worker’s cron list. Omitting OPS_TOKEN logs a warning and preserves any existing deployed token; a fresh deployment without it has no ops endpoint.
+assets, then writes **SESSION_SECRET and IP_HASH_SALT**, plus **OPS_TOKEN and RESEND_API_KEY only when supplied**, as Worker secrets. `EMAIL_FROM`, `APP_ORIGIN`, `LEGACY_HOSTS`, `SIGNIN_EMAIL`, `SIGNIN_GOOGLE` and `SETTINGS` are plain-text vars, not secrets. Use `--instance jesklabs` (or `--instance=jesklabs`) for every hosted deployment. Omitted optional secrets preserve existing values; disable sign-in via the profile and remove notification credentials explicitly to disable a configured provider. The uploader then PUTs the hourly schedule to `/workers/scripts/family-practice/schedules` with `[{"cron":"0 * * * *"}]`; this replaces that Worker’s cron list. Omitting OPS_TOKEN logs a warning and preserves any existing deployed token; a fresh deployment without it has no ops endpoint.
 It does not provision subscriptions, routes, DNS, custom hostnames, workers.dev,
 preview URLs, or Access policies. For this public product **Cloudflare Access is
 not required and must not gate the app**; independently enable/configure the
@@ -209,7 +209,7 @@ are deliberate defaults, not proof of any live public address.
 ## Uploader details
 
 - Worker `family-practice`, compatibility date `2026-11-01`.
-- ES modules `cloudflare/{worker,core,mcp,auth,tts,sharing,accounts,emails,notifications}.js`
+- ES modules `cloudflare/{worker,core,mcp,auth,tts,sharing,accounts,emails,notifications,legacy,settings,runtime-settings}.js`
   and `lib/practice.js`, preserving relative imports without bundling/rewriting.
 - Bindings FAMILY → FamilyDatabase, REGISTRY → RegistryLimits, TTS_CACHE → TtsCache,
   SHARES → ShareStore, ACCOUNTS → AccountStore, ASSETS → assets, AI → Workers AI; optional ACCOUNTS_SVC → shared Accounts Worker service.
@@ -318,13 +318,13 @@ step to test/0; invalid imported mode/step values are rejected.
 Code/PIN-only families remain fully usable without an account. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use.
 
 Identity belongs to the separate Accounts service at `https://accounts.jesklabs.com`.
-Configure `ACCOUNTS_SVC` as a Worker service binding to `jesklabs-accounts`, entrypoint `SpellingClient`. For the uploader, explicitly set `FP_SIGNIN_EMAIL=1` and/or `FP_SIGNIN_GOOGLE=1`; these become Worker vars `SIGNIN_EMAIL` / `SIGNIN_GOOGLE`. For Wrangler set those Worker vars directly. All default to `0`; SSO is available when either provider is enabled. The registered production callback is exactly `https://spellami.jesklabs.com/auth/jesklabs/callback`; only localhost development uses the request origin. Self-hosters must adapt the app callback constant and arrange a compatible shared service/client registration or leave sign-in off. Do not configure a Google client or Resend authentication key in Spellami: Accounts owns Google OAuth, email codes and shared SSO. The app’s `/api/auth/config` returns `{email,google,sso}` availability.
+The profile's `accounts` selects the optional Worker service/entrypoint binding and `signin` enables email/Google (neutral defaults off). The hosted `jesklabs` profile enables both; SSO is available when either is enabled. The callback is `APP_ORIGIN` plus `/auth/jesklabs/callback`; only localhost development uses the request origin. Arrange a compatible shared service/client registration or leave sign-in off. The public shared-Accounts provider endpoint remains its integration contract, not an app-origin default. Do not configure a Google client or Resend authentication key in Spellami: Accounts owns Google OAuth, email codes and shared SSO. The app’s `/api/auth/config` returns `{email,google,sso}` availability.
 
 `POST /api/auth/start` accepts `{mode:'google'|'sso',familyCode?}` and returns `{url}` with a flow cookie. Family codes travel only in JSON, never redirect queries. `GET /auth/jesklabs/start?mode=google|sso` supports a code-free entry. Callback redirects to `/?auth=confirm|signin|error`. Sign-in entry tries SSO first; `confirm` fetches the masked pending email and asks explicitly before `POST /api/auth/confirm` creates a local session. Choosing a different account calls `/api/auth/decline` and opens the regular Google/email sheet. Successful email verification returns `{ok:true,attachUrl}` and the browser immediately follows it to attach shared SSO. Normal signout clears only app cookies. The separate “Sign out of all Jesklabs apps on this device” option clears app cookies before navigating to `https://accounts.jesklabs.com/sso/logout?client=spelling&return=/`.
 
 The singleton AccountStore keys identity by stable shared Accounts subject, not email; email is mutable profile/delivery data. Links hold recoverable family access and remain private app-local data. Deleting this app’s sign-in removes its associations/preferences and calls Accounts `deleteLink`; Accounts retains other app links, deleting its shared user only when none remain. Unlink and family deletion clean up local associations.
 
-Resend here is **only for opted-in notifications**, independent of shared sign-in. Verify a sender domain, configure `RESEND_API_KEY`, and set `EMAIL_FROM` to the verified sender; self-hosters must replace the hosted default. No Resend means no notification delivery, not disabled shared authentication. Provider quotas/deliverability are independent of the app’s bounded mail budget; never purchase a plan automatically. Digest content is aggregate kid progress only—never raw answers, codes/PINs, or full word/verse lists. Signed List-Unsubscribe/One-Click handling suppresses optional emails only. No tracking pixels.
+Resend here is **only for opted-in notifications**, independent of shared sign-in. Verify a sender domain, configure `RESEND_API_KEY`, and set profile `emailFrom` to the verified sender; there is no default sender. No Resend means no notification delivery, not disabled shared authentication. Provider quotas/deliverability are independent of the app’s bounded mail budget; never purchase a plan automatically. Digest content is aggregate kid progress only—never raw answers, codes/PINs, or full word/verse lists. Signed List-Unsubscribe/One-Click handling suppresses optional emails only. No tracking pixels.
 
 Hourly cron is UTC, but preference matching uses the parent's IANA timezone.
 `selectForHour(prefs, now, kind)` returns a boolean and **does not** reserve a send.

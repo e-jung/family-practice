@@ -1,3 +1,4 @@
+import {settingsFor} from './runtime-settings.js';
 import {authConfig} from './accounts.js';
 import {createSharing} from './sharing.js';
 import {initConnections,createConnection,connectionFields,handleMcp} from './mcp.js';
@@ -107,7 +108,7 @@ export function createHandler(ctx, env) {
     return reviewBank(all('SELECT * FROM word_bank WHERE kid_id=?',kid).filter(w=>refs.has(w.key)).map(w=>{
       const ref=refs.get(w.key);
       return {...w,tested:!!w.tested,id:ref.id,word_id:ref.id,list_id:ref.list_id,word:ref.word,sentence:ref.sentence};
-    }));
+    }), Date.now(), settingsFor(env).reviewBatch);
   }
   function pruneAttempts() {
     const old=all("SELECT id,kind FROM (SELECT id,0 kind,created_at FROM attempts UNION ALL SELECT id,1 kind,created_at FROM verse_attempts) ORDER BY created_at DESC,kind DESC,id DESC LIMIT -1 OFFSET 50000");

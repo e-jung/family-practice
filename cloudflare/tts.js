@@ -1,3 +1,4 @@
+import {settingsFor} from './runtime-settings.js';
 import { sha256 } from './auth.js';
 export const TTS_MODEL = '@cf/deepgram/aura-1';
 export const TTS_SPEAKER = 'asteria';
@@ -29,7 +30,7 @@ export async function audioBytes(output) {
 export async function tts(request, env, reserve, ctx, record = async()=>{}) {
   const url = new URL(request.url), text = (url.searchParams.get('text') || '').trim();
   const lang = url.searchParams.get('lang') || 'en';
-  if (!text || text.length > 300 || lang !== 'en') return failure('Invalid speech text or language', 400);
+  if (!text || text.length > settingsFor(env).voice.request || lang !== 'en') return failure('Invalid speech text or language', 400);
   const speaker = env.TTS_SPEAKER || TTS_SPEAKER;
   const hash = await sha256(`${TTS_MODEL}|${speaker}|mp3|${lang}|${text}`);
   const key = new Request('https://tts-cache.internal/v2/' + hash);

@@ -1,3 +1,4 @@
+import {settingsFor} from './runtime-settings.js';
 // Optional parent identity. A single SQLite DO serializes cross-family limits and mail quotas.
 import {sha256,equalSecret,normalizeCode,validCode} from './auth.js';
 const json=(v,status=200,headers={})=>Response.json(v,{status,headers:(()=>{const h=new Headers(headers);h.set('Cache-Control','no-store');h.set('Referrer-Policy','no-referrer');return h;})()});
@@ -35,7 +36,12 @@ export class AccountStore {
  if(p==='/list')return json({accounts:[...sql.exec('SELECT data FROM accounts ORDER BY hash LIMIT 100 OFFSET ?',b.offset||0)].map(r=>JSON.parse(r.data))});
  if(p==='/get')return json({account:load(b.hash)});
  if(p==='/stats')return json({parents:Number(row('SELECT COUNT(*) n FROM accounts').n),daily:[...sql.exec('SELECT * FROM email_stats ORDER BY day DESC LIMIT 30')]});
- if(p==='/mail-reserve'){const day=new Date(now).toISOString().slice(0,10);limit('mail:'+day,500,86400000);sql.exec('INSERT INTO email_stats VALUES(?,1,0) ON CONFLICT(day) DO UPDATE SET sent=sent+1',day);return json({ok:true});}
+ if (p === '/mail-reserve') {
+   const day = new Date(now).toISOString().slice(0,10);
+   limit('mail:'+day, settingsFor(this.env).mailDaily, 86400000);
+   sql.exec('INSERT INTO email_stats VALUES(?,1,0) ON CONFLICT(day) DO UPDATE SET sent=sent+1', day);
+   return json({ok:true});
+ }
  if(p==='/mail-failed'){sql.exec('INSERT INTO email_stats VALUES(?,0,1) ON CONFLICT(day) DO UPDATE SET failed=failed+1',new Date(now).toISOString().slice(0,10));return json({ok:true});}
  if(p==='/sink'){sql.exec('INSERT OR REPLACE INTO email_sink VALUES(?,?)',b.email,JSON.stringify(b.message));return json({ok:true});}
  if(p==='/sink-get')return json({message:JSON.parse(row('SELECT data FROM email_sink WHERE email=?',b.email)?.data||'null')});
@@ -75,7 +81,21 @@ export async function routeAuth(request,env){const u=new URL(request.url),p=u.pa
  if(p==='/api/auth/signout'&&write){const headers=new Headers({'Cache-Control':'no-store'});for(const c of [authCookie('',0),flowCookie('',0),pendingCookie('',0),emailCookie('',0),'parent=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'])headers.append('Set-Cookie',c);return Response.json({ok:true},{headers});}
  if(p==='/api/auth/code/send'&&write){const email=normalizeEmail(b.email),key=await hmac(env.SESSION_SECRET,'email-link:'+email),family=b.familyCode?await linkingProof(request,env,b.familyCode):null,browser=crypto.randomUUID();const result=await accountsRpc(env,'startEmail',{email,ip});if(result?.ok!==true)fail('Sign-in is temporarily unavailable.',503);await accountRequest(env,'/pending/set',{key,family,browser:await hmac(env.SESSION_SECRET,'email-browser:'+browser)});return json({ok:true},200,{'Set-Cookie':emailCookie(browser)});}
  if(p==='/api/auth/code/verify'&&write){const email=normalizeEmail(b.email);if(typeof b.code!=='string'||!/^\d{6}$/.test(b.code))fail('Enter the six-digit code');const result=await accountsRpc(env,'verifyEmail',{email,code:b.code,ip});if(typeof result?.ssoTicket!=='string'||!result.ssoTicket)fail('Sign-in is temporarily unavailable.',503);const user=await identity(result),account=await login(user),{family}=await accountRequest(env,'/pending/take',{key:await hmac(env.SESSION_SECRET,'email-link:'+email),browser:await hmac(env.SESSION_SECRET,'email-browser:'+(getCookie(request,'__Host-jl_email')||''))});const cookie=await issue(account,family),target=new URL('/sso/attach',accountsOrigin(env,u));target.search=new URLSearchParams({ticket:result.ssoTicket,client:'spelling',return:'/?signedIn=1'}).toString();const headers=new Headers();headers.append('Set-Cookie',cookie);headers.append('Set-Cookie',emailCookie('',0));return json({ok:true,attachUrl:target.href},200,headers);}
- if((p==='/api/auth/start'&&write)||(p==='/auth/jesklabs/start'&&request.method==='GET')){const mode=write?b.mode:u.searchParams.get('mode');if(!['google','sso'].includes(mode)||mode==='google'&&!config.google)fail('Not found',404);const pending=b.familyCode?crypto.randomUUID():null;if(pending)await accountRequest(env,'/pending/set',{key:pending,family:await linkingProof(request,env,b.familyCode)});const state=crypto.randomUUID(),verifier=crypto.randomUUID()+crypto.randomUUID(),redirectUri=local(u)?u.origin+'/auth/jesklabs/callback':'https://spellami.jesklabs.com/auth/jesklabs/callback',challenge=b64(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(verifier))))),flow=await signedValue(env.SESSION_SECRET,'oauth',{state,verifier,mode,pending,redirectUri,exp:Date.now()+600000});const target=new URL('/authorize',accountsOrigin(env,u));target.search=new URLSearchParams({client:'spelling',redirect_uri:redirectUri,state,code_challenge:challenge,code_challenge_method:'S256',...(mode==='google'?{provider:'google'}:{prompt:'none'})}).toString();return write?json({url:target.href},200,{'Set-Cookie':flowCookie(flow)}):redirect(target.href,new Headers({'Set-Cookie':flowCookie(flow)}));}
+ if ((p === '/api/auth/start' && write) || (p === '/auth/jesklabs/start' && request.method === 'GET')) {
+   const mode = write ? b.mode : u.searchParams.get('mode');
+   if (!['google','sso'].includes(mode) || mode === 'google' && !config.google) fail('Not found',404);
+   const pending = b.familyCode ? crypto.randomUUID() : null;
+   if (pending) await accountRequest(env, '/pending/set', {key:pending, family:await linkingProof(request,env,b.familyCode)});
+   const state = crypto.randomUUID(), verifier = crypto.randomUUID() + crypto.randomUUID();
+   const redirectUri = new URL('/auth/jesklabs/callback', local(u) ? u.origin : env.APP_ORIGIN).href;
+   const challenge = b64(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(verifier)))));
+   const flow = await signedValue(env.SESSION_SECRET, 'oauth', {state, verifier, mode, pending, redirectUri, exp:Date.now()+600000});
+   const target = new URL('/authorize', accountsOrigin(env,u));
+   target.search = new URLSearchParams({client:'spelling', redirect_uri:redirectUri, state, code_challenge:challenge,
+     code_challenge_method:'S256', ...(mode === 'google' ? {provider:'google'} : {prompt:'none'})}).toString();
+   return write ? json({url:target.href},200,{'Set-Cookie':flowCookie(flow)}) :
+     redirect(target.href, new Headers({'Set-Cookie':flowCookie(flow)}));
+ }
  if(p==='/auth/jesklabs/callback'&&request.method==='GET'){callbackHeaders=new Headers({'Set-Cookie':flowCookie('',0)});const flow=await readValue(env.SESSION_SECRET,'oauth',getCookie(request,'__Host-jl_auth'));if(!flow||!await equalSecret(u.searchParams.get('state')||'',flow.state))return redirect('/?auth=error',callbackHeaders);if(flow.mode==='google'&&!config.google)fail('Not found',404);if(u.searchParams.has('error'))return redirect('/?auth='+(u.searchParams.get('error')==='login_required'?'signin':'error'),callbackHeaders);const code=u.searchParams.get('code');if(!code)return redirect('/?auth=error',callbackHeaders);const user=await identity(await accountsRpc(env,'exchangeCode',{code,codeVerifier:flow.verifier,redirectUri:flow.redirectUri}));if(flow.mode==='sso'){callbackHeaders.append('Set-Cookie',pendingCookie(await signedValue(env.SESSION_SECRET,'pending',{...user,pending:flow.pending,exp:Date.now()+600000})));return redirect('/?auth=confirm',callbackHeaders);}const {family}=flow.pending?await accountRequest(env,'/pending/take',{key:flow.pending}):{};callbackHeaders.append('Set-Cookie',await issue(await login(user),family));return redirect('/?signedIn=1',callbackHeaders);}
  const pending=await readValue(env.SESSION_SECRET,'pending',getCookie(request,'__Host-jl_pending'));
  if(p==='/api/auth/pending'&&request.method==='GET')return json({email:pending?maskEmail(pending.email):null});

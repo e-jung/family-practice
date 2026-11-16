@@ -1,0 +1,23 @@
+{
+  "voice": {
+    "globalDaily": 6000,
+    "familyDaily": 1500,
+    "ipHourly": 2000,
+    "request": 300
+  },
+  "mailDaily": 500,
+  "notifications": {
+    "weekly": {
+      "day": 0,
+      "hour": 17
+    },
+    "review": {
+      "days": [
+        2,
+        5
+      ],
+      "hour": 17
+    }
+  },
+  "reviewBatch": 15
+}

@@ -5,12 +5,17 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import {load, defaults} from './settings.js';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
 export const SCRIPT = 'family-practice';
-export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js', 'cloudflare/auth.js', 'cloudflare/tts.js', 'cloudflare/sharing.js', 'cloudflare/accounts.js', 'cloudflare/emails.js', 'cloudflare/notifications.js', 'cloudflare/legacy.js', 'lib/practice.js'];
+export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js',
+ 'cloudflare/auth.js', 'cloudflare/tts.js', 'cloudflare/sharing.js', 'cloudflare/accounts.js',
+ 'cloudflare/emails.js', 'cloudflare/notifications.js', 'cloudflare/legacy.js', 'lib/practice.js',
+ 'cloudflare/settings.js', 'cloudflare/runtime-settings.js'];
+
 export const OPTIONAL_SECRETS = ['OPS_TOKEN', 'RESEND_API_KEY'];
-export const EMAIL_FROM = 'Spellami <hello@jesklabs.com>';
 export const SCHEDULES = [{ cron: '0 * * * *' }];
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -55,7 +60,7 @@ export async function buildPlan(root = ROOT) {
   return { manifest, files, modules, config };
 }
 
-export function metadataFor(plan, jwt, migrationTag, env = {}) {
+export function metadataFor(plan, jwt, migrationTag, env = {}, instance = {}, settings = defaults) {
   if (migrationTag != null && migrationTag !== '' && !['v1', 'v2', 'v3', 'v4'].includes(migrationTag)) {
     throw new Error('Unexpected Durable Object migration tag; refusing to change migration history');
   }
@@ -69,13 +74,13 @@ export function metadataFor(plan, jwt, migrationTag, env = {}) {
       { name: 'TTS_CACHE', type: 'durable_object_namespace', class_name: 'TtsCache' },
       { name: 'SHARES', type: 'durable_object_namespace', class_name: 'ShareStore' },
       { name: 'ACCOUNTS', type: 'durable_object_namespace', class_name: 'AccountStore' },
-      {type:'service',name:'ACCOUNTS_SVC',service:'jesklabs-accounts',entrypoint:'SpellingClient'},
-      {name:'SIGNIN_EMAIL',type:'plain_text',text:env.FP_SIGNIN_EMAIL==='1'?'1':'0'},
-      {name:'SIGNIN_GOOGLE',type:'plain_text',text:env.FP_SIGNIN_GOOGLE==='1'?'1':'0'},
-      { name: 'EMAIL_FROM', type: 'plain_text', text: env.EMAIL_FROM || EMAIL_FROM },
-      { name: 'APP_ORIGIN', type: 'plain_text', text: env.APP_ORIGIN || 'https://spellami.jesklabs.com' },
-      // Former hosted hostname; 301s to APP_ORIGIN and hands saved Family Codes over (cloudflare/legacy.js).
-      { name: 'LEGACY_HOSTS', type: 'plain_text', text: env.FP_LEGACY_HOSTS ?? 'spelling.jesklabs.com' },
+      ...(instance.accounts ? [{ type: 'service', name: 'ACCOUNTS_SVC', ...instance.accounts }] : []),
+      { name: 'SIGNIN_EMAIL', type: 'plain_text', text: instance.signin?.email ? '1' : '0' },
+      { name: 'SIGNIN_GOOGLE', type: 'plain_text', text: instance.signin?.google ? '1' : '0' },
+      { name: 'EMAIL_FROM', type: 'plain_text', text: instance.emailFrom || '' },
+      { name: 'APP_ORIGIN', type: 'plain_text', text: instance.appOrigin || env.APP_ORIGIN || 'https://example.invalid' },
+      { name: 'LEGACY_HOSTS', type: 'plain_text', text: (instance.legacyHosts || []).join(',') },
+      { name: 'SETTINGS', type: 'plain_text', text: JSON.stringify(settings) },
       { name: 'ASSETS', type: 'assets' },
       { name: 'AI', type: 'ai' },
     ],
@@ -90,18 +95,33 @@ export function metadataFor(plan, jwt, migrationTag, env = {}) {
   };
 }
 
-export async function deploy({ env = process.env, fetchImpl = globalThis.fetch, root = ROOT, dryRun = false, log = console.log } = {}) {
+export async function deploy({
+  env = process.env, fetchImpl = globalThis.fetch, root = ROOT,
+  dryRun = false, instance: instanceName, log = console.log,
+} = {}) {
+  const loaded = load(await readFile(join(root, 'cloudflare/settings.json'), 'utf8'));
+  if (loaded.errors.length) throw new Error('Invalid settings: ' + loaded.errors.join('; '));
+  const settings = loaded.value;
+  let instance = {};
+  if (instanceName) {
+    if (!/^[a-z0-9-]+$/.test(instanceName)) throw new Error('Invalid instance name');
+    instance = JSON.parse(await readFile(join(root, 'cloudflare/instances', instanceName + '.json'), 'utf8'));
+    validateInstance(instance);
+  }
+  const origin = instance.appOrigin || env.APP_ORIGIN;
+  if (!dryRun && !origin) throw new Error('APP_ORIGIN or an instance appOrigin is required for deployment');
+  if (origin) validateOrigin(origin);
   const plan = await buildPlan(root);
   if (dryRun) {
     const summary = {
       dry_run: true, script: SCRIPT, network_requests: 0,
       modules: plan.modules.map(({ name, bytes }) => ({ name, size: bytes.length })),
       manifest: plan.manifest,
-      metadata_if_first_deployment: metadataFor(plan, '<completion JWT: obtained only during deployment>', null, env),
-      metadata_if_live_v1: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v1', env),
-      metadata_if_live_v2: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v2', env),
-      metadata_if_live_v3: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v3', env),
-      metadata_if_live_v4: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v4', env),
+      metadata_if_first_deployment: metadataFor(plan, '<completion JWT: obtained only during deployment>', null, env, instance, settings),
+      metadata_if_live_v1: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v1', env, instance, settings),
+      metadata_if_live_v2: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v2', env, instance, settings),
+      metadata_if_live_v3: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v3', env, instance, settings),
+      metadata_if_live_v4: metadataFor(plan, '<completion JWT: obtained only during deployment>', 'v4', env, instance, settings),
       schedules: SCHEDULES,
       migration_check: 'Reads current settings; applies only missing v1–v4 steps; v4 omits migrations; unknown tags abort.',
       secrets: ['SESSION_SECRET', 'IP_HASH_SALT'],
@@ -147,17 +167,17 @@ export async function deploy({ env = process.env, fetchImpl = globalThis.fetch, 
 
   // Legacy version settings include migration_tag. Current /script-settings docs describe
   // a different script-level resource, so never infer "unmigrated" from an omitted field.
-  const settings = await api(`${scriptPath}/settings`, { allow404: 'or403' });
-  let migrationTag = settings?.migration_tag;
+  const liveSettings = await api(`${scriptPath}/settings`, { allow404: 'or403' });
+  let migrationTag = liveSettings?.migration_tag;
   if (migrationTag === undefined) {
     const scripts = await api(`${accountPath}/scripts`);
     if (!Array.isArray(scripts)) throw new Error('Unexpected Workers list response; migration state unknown');
     const existing = scripts.find(script => script.id === SCRIPT);
     migrationTag = existing?.migration_tag ?? null;
     // Missing tags are documented for Workers that do not use Durable Objects.
-    if (settings === null && existing) log('Using documented Workers list migration state (legacy settings unavailable).');
+    if (liveSettings === null && existing) log('Using documented Workers list migration state (legacy settings unavailable).');
   }
-  metadataFor(plan, '', migrationTag); // Validate migration before any write.
+  metadataFor(plan, '', migrationTag, env, instance, settings); // Validate migration before any write.
   const session = await api(`${scriptPath}/assets-upload-session`, { method: 'POST', body: { manifest: plan.manifest } });
   if (!session?.jwt || !Array.isArray(session.buckets)) throw new Error('Invalid assets upload session response');
   let completionJwt = session.buckets.length === 0 ? session.jwt : undefined;
@@ -173,7 +193,7 @@ export async function deploy({ env = process.env, fetchImpl = globalThis.fetch, 
     if (result?.jwt) completionJwt = result.jwt;
   }
   if (!completionJwt) throw new Error('No assets completion JWT; refusing script upload');
-  const metadata = metadataFor(plan, completionJwt, migrationTag, env);
+  const metadata = metadataFor(plan, completionJwt, migrationTag, env, instance, settings);
   const body = new FormData();
   body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json');
   for (const module of plan.modules) {
@@ -189,10 +209,35 @@ export async function deploy({ env = process.env, fetchImpl = globalThis.fetch, 
   return { script: SCRIPT, assets: Object.keys(plan.manifest).length, migrated: migrationTag !== 'v4' };
 }
 
+function validateOrigin(origin) {
+  const url = new URL(origin);
+  if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password) {
+    throw new Error('APP_ORIGIN must be a canonical HTTPS origin');
+  }
+}
+function validateInstance(instance) {
+  validateOrigin(instance.appOrigin);
+  if (typeof instance.emailFrom !== 'string' || /[\r\n]/.test(instance.emailFrom)) throw new Error('Invalid instance emailFrom');
+  if (!Array.isArray(instance.legacyHosts) || instance.legacyHosts.some(h =>
+    typeof h !== 'string' || !/^[a-z0-9.-]+$/.test(h))) throw new Error('Invalid instance legacyHosts');
+  if (instance.accounts && (!/^[a-z0-9-]+$/.test(instance.accounts.service) ||
+    !/^[A-Za-z0-9_]+$/.test(instance.accounts.entrypoint))) throw new Error('Invalid instance accounts binding');
+  if (typeof instance.signin?.email !== 'boolean' || typeof instance.signin?.google !== 'boolean') {
+    throw new Error('Invalid instance signin switches');
+  }
+  if ((instance.signin.email || instance.signin.google) && !instance.accounts) throw new Error('Sign-in requires accounts binding');
+}
 export async function main(args = process.argv.slice(2)) {
-  if (args.some(arg => arg !== '--dry-run') || args.length > 1) throw new Error('Usage: node cloudflare/deploy.mjs [--dry-run]');
+  let dryRun = false, instance;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--dry-run' && !dryRun) dryRun = true;
+    else if (args[i] === '--instance' && !instance) instance = args[++i];
+    else if (args[i].startsWith('--instance=') && !instance) instance = args[i].slice(11);
+    else throw new Error('Usage: node cloudflare/deploy.mjs [--instance name] [--dry-run]');
+    if (args[i - 1] === '--instance' && !instance) throw new Error('--instance requires a name');
+  }
   if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Node.js 24 or newer is required');
-  return deploy({ dryRun: args.includes('--dry-run') });
+  return deploy({ dryRun, instance });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch(error => { console.error(`Deployment failed: ${error.message}`); process.exitCode = 1; });

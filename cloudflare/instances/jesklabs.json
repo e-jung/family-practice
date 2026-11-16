@@ -1,0 +1,15 @@
+{
+  "appOrigin": "https://spellami.jesklabs.com",
+  "emailFrom": "Spellami <hello@jesklabs.com>",
+  "legacyHosts": [
+    "spelling.jesklabs.com"
+  ],
+  "accounts": {
+    "service": "jesklabs-accounts",
+    "entrypoint": "SpellingClient"
+  },
+  "signin": {
+    "email": true,
+    "google": true
+  }
+}

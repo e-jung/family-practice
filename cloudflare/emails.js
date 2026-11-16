@@ -1,7 +1,6 @@
 // Pure content/scheduling helpers. AccountStore owns opt-ins, delivery claims and retention.
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clean = value => String(value ?? '').replace(/[\r\n]/g, ' ').slice(0, 200);
-export const DEFAULT_EMAIL_FROM = 'Spellami <hello@jesklabs.com>';
 
 // All mail shares the same email-safe, inline-styled shell; no remote assets or fonts.
 const font = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
@@ -94,7 +93,8 @@ export async function sendEmail(env, { to, subject, text, html, unsubscribe }, f
   const address = String(to ?? '');
   if (address.length > 254 || !/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(address)) throw new Error('Invalid recipient');
   if (!subject || /[\r\n]/.test(subject) || String(subject).length > 300) throw new Error('Invalid email subject');
-  const from = env.EMAIL_FROM || DEFAULT_EMAIL_FROM;
+  const from = env.EMAIL_FROM || '';
+  if (!from) return { sent: false, reason: 'email_unconfigured' };
   if (/[\r\n]/.test(from)) throw new Error('Invalid sender');
   const headers = unsubscribe ? { 'List-Unsubscribe': `<${safeLink(unsubscribe)}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : undefined;
   const message = { from, to: [address], subject: String(subject), text: String(text ?? ''), html: String(html ?? ''), ...(headers ? { headers } : {}) };
