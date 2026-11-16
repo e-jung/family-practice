@@ -21,7 +21,7 @@ try {
   const instance = JSON.parse(await readFile(new URL('../instances/jesklabs.json', import.meta.url)));
   await writeFile(join(root, 'cloudflare/instances/jesklabs.json'), JSON.stringify(instance));
   const plan = await buildPlan(root);
-  assert.equal(Object.keys(plan.manifest).length, 2);
+  assert.equal(Object.keys(plan.manifest).length, 3);
   assert.equal(plan.config._headers, '/*\n  X-Test: yes\n');
   assert.ok(!plan.manifest['/_headers'] && !plan.manifest['/_redirects']);
   assert.ok(Object.values(plan.manifest).every(x => /^[a-f0-9]{32}$/.test(x.hash)));

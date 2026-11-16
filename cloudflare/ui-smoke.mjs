@@ -1,5 +1,6 @@
 // Optional Playwright tool install only; not an application/runtime dependency.
 import assert from 'node:assert/strict';
+import {verseMasteryCopy} from './public/verse-mastery.js';
 import {mkdir} from 'node:fs/promises';
 await mkdir('.tools',{recursive:true});
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -268,6 +269,7 @@ try {
     await page.getByRole('button',{name:'Back to modes'}).click();
     await page.getByRole('button',{name:'Progress',exact:true}).click();
     await page.getByRole('heading',{name:'Verse garden'}).waitFor();
+    await page.getByText(verseMasteryCopy(), {exact:true}).waitFor();
     await page.getByRole('img',{name:'First-try spelling accuracy by list'}).waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'no horizontal overflow');
     if(width===390)assert.ok((await page.evaluate(()=>window.testSpoken)).length>0);

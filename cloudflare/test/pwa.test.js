@@ -76,7 +76,13 @@ test('shell caches every self-hosted font, sound, and module, each with its lice
   const source = (await asset('sw.js')).toString();
   const shell = JSON.parse(source.match(/const SHELL = (\[[^\]]+\])/)[1].replaceAll("'", '"'));
   for (const path of shell.filter(p => p !== '/')) assert.ok((await asset(path.slice(1))).length > 0, `${path} exists`);
-  for (const path of ['/feedback.js', '/keyboard.js', '/icons.js', '/fonts/practice-reader-regular.woff2', '/fonts/barlow-condensed-bold.woff2', '/audio/interface-click-002.mp3']) assert.ok(shell.includes(path), `${path} is in the shell`);
+  const required = [
+    '/feedback.js', '/keyboard.js', '/icons.js', '/fonts/practice-reader-regular.woff2',
+    '/fonts/barlow-condensed-bold.woff2', '/audio/interface-click-002.mp3',
+    '/speech.js', '/spelling.js', '/verses.js', '/progress.js', '/parent.js', '/welcome.js',
+    '/practice-round.js', '/verse-mastery.js',
+  ];
+  for (const path of required) assert.ok(shell.includes(path), `${path} is in the shell`);
   const woff2 = await asset('fonts/practice-reader-regular.woff2');
   assert.equal(woff2.subarray(0, 4).toString(), 'wOF2');
   for (const license of ['practice-reader-OFL.txt', 'barlow-condensed-OFL.txt', 'kenney-CC0.txt', 'README.txt']) assert.ok((await asset('licenses/' + license)).length > 200);

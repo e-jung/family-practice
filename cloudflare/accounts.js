@@ -1,114 +1,782 @@
-import {settingsFor} from './runtime-settings.js';
+import { settingsFor } from "./runtime-settings.js";
 // Optional parent identity. A single SQLite DO serializes cross-family limits and mail quotas.
-import {sha256,equalSecret,normalizeCode,validCode} from './auth.js';
-const json=(v,status=200,headers={})=>Response.json(v,{status,headers:(()=>{const h=new Headers(headers);h.set('Cache-Control','no-store');h.set('Referrer-Policy','no-referrer');return h;})()});
-const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
-const enc=new TextEncoder();
-export async function hmac(secret,value){const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return [...new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode(value)))].map(n=>n.toString(16).padStart(2,'0')).join('');}
-export function normalizeEmail(v){if(typeof v!=='string')fail('Enter an email address');const email=v.trim().toLowerCase();if(email.length>254||! /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))fail('Enter a valid email address');return email;}
-export const maskEmail=email=>email?email[0]+'•••@'+email.split('@')[1]:'Google account';
-const b64=s=>btoa(s).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
-const unb64=s=>atob(s.replaceAll('-','+').replaceAll('_','/'));
-const encodeBytes=bytes=>b64(String.fromCharCode(...bytes));
-const decodeBytes=value=>Uint8Array.from(unb64(value),c=>c.charCodeAt(0));
-const privateKind=kind=>['session','pending'].includes(kind);
-async function cookieKey(secret,kind){return crypto.subtle.importKey('raw',Uint8Array.from((await hmac(secret,'private-cookie:'+kind)).match(/../g),byte=>parseInt(byte,16)),'AES-GCM',false,['encrypt','decrypt']);}
-export async function signedValue(secret,kind,data){let bytes=enc.encode(JSON.stringify(data));if(privateKind(kind)){const iv=crypto.getRandomValues(new Uint8Array(12)),cipher=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await cookieKey(secret,kind),bytes));bytes=new Uint8Array([...iv,...cipher]);}const payload=encodeBytes(bytes);return payload+'.'+await hmac(await hmac(secret,'family-practice:'+kind),payload);}
-export async function readValue(secret,kind,token,now=Date.now()){try{if(!token||token.length>4096)return null;const [p,s,...extra]=token.split('.');if(extra.length||!await equalSecret(s||'',await hmac(await hmac(secret,'family-practice:'+kind),p)))return null;let bytes=decodeBytes(p);if(privateKind(kind))bytes=new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.slice(0,12)},await cookieKey(secret,kind),bytes.slice(12)));const data=JSON.parse(new TextDecoder().decode(bytes));return data.exp>now?data:null;}catch{return null;}}
-const getCookie=(r,name)=>(r.headers.get('Cookie')||'').match(new RegExp('(?:^|;\\s*)'+name+'=([^;]+)'))?.[1];
-const authCookie=(value,age=2592000)=>`fp_account=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
-const flowCookie=(value,age=600)=>`__Host-jl_auth=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
-const emailCookie=(value,age=600)=>`__Host-jl_email=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
-const pendingCookie=(value,age=600)=>`__Host-jl_pending=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
-export const authConfig=env=>{const email=!!env.ACCOUNTS_SVC&&env.SIGNIN_EMAIL==='1',google=!!env.ACCOUNTS_SVC&&env.SIGNIN_GOOGLE==='1';return {email,google,sso:email||google};};
-const local=u=>['localhost','127.0.0.1','[::1]'].includes(u.hostname);
-const accountsOrigin=(env,u)=>env.ACCOUNTS_DEV==='1'&&local(u)&&env.ACCOUNTS_ORIGIN&&local(new URL(env.ACCOUNTS_ORIGIN))?new URL(env.ACCOUNTS_ORIGIN).origin:'https://accounts.jesklabs.com';
-export async function accountsRpc(env,method,input){let result;try{result=await env.ACCOUNTS_SVC[method](input);}catch{fail('Sign-in is temporarily unavailable. Please try again.',503);}if(result?.error){const errors={rate_limited:['Too many attempts. Please try again later.',429],invalid_email:['Enter a valid email address.',400],invalid_code:['That code is incorrect. Please try again.',401],expired:['That code has expired. Request a new one.',401],invalid_grant:['Sign-in expired. Please start again.',401],temporarily_unavailable:['Sign-in is temporarily unavailable. Please try again.',503],invalid_identity:['Unable to verify this account. Please try again.',401]};const [message,status]=errors[result.error]||['Sign-in is temporarily unavailable. Please try again.',503];throw Object.assign(Error(message),{status,retryAfter:result.error==='rate_limited'?Math.max(1,Math.ceil(Number(result.retryAfter)||60)):undefined});}return result;}
-export async function accountRequest(env,path,data={}){const r=await env.ACCOUNTS.get(env.ACCOUNTS.idFromName('accounts')).fetch(new Request('https://internal'+path,{method:'POST',body:JSON.stringify(data)}));const b=await r.json();if(!r.ok)fail(b.error,r.status);return b;}
-export const parentRef=(env,sub)=>hmac(env.SESSION_SECRET,'account-parent:'+sub);
-export const familyRef=(env,hash)=>hmac(env.SESSION_SECRET,'account-family:'+hash);
-export async function accountSession(request,env){if(!env.ACCOUNTS)return null;const s=await readValue(env.SESSION_SECRET,'session',getCookie(request,'fp_account'));if(!s)return null;const a=await accountRequest(env,'/get',{hash:s.hash});return a.account&&a.account.epoch===s.epoch?a.account:null;}
-export class AccountStore {
- constructor(ctx,env){this.ctx=ctx;this.env=env;this.sql=ctx.storage.sql;this.sql.exec('CREATE TABLE IF NOT EXISTS accounts(hash TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS pending_links(key TEXT PRIMARY KEY,data TEXT NOT NULL,until INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS account_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS email_sink(email TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS email_stats(day TEXT PRIMARY KEY,sent INTEGER NOT NULL DEFAULT 0,failed INTEGER NOT NULL DEFAULT 0);');}
- fetch(r){return this.ctx.blockConcurrencyWhile(async()=>{try{const b=await r.json(),p=new URL(r.url).pathname,sql=this.sql,now=Date.now();const row=(q,...v)=>[...sql.exec(q,...v)][0];const load=h=>{const a=row('SELECT data FROM accounts WHERE hash=?',h);return a?JSON.parse(a.data):null;};const save=a=>sql.exec('INSERT OR REPLACE INTO accounts VALUES(?,?)',a.hash,JSON.stringify(a));
- sql.exec('DELETE FROM account_limits WHERE until<=?',now);sql.exec('DELETE FROM pending_links WHERE until<=?',now);
- const limit=(key,max,ms)=>{if((row('SELECT count FROM account_limits WHERE key=?',key)?.count||0)>=max)fail('Try again later',429);sql.exec('INSERT INTO account_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',key,now+ms);};
- if(p==='/list')return json({accounts:[...sql.exec('SELECT data FROM accounts ORDER BY hash LIMIT 100 OFFSET ?',b.offset||0)].map(r=>JSON.parse(r.data))});
- if(p==='/get')return json({account:load(b.hash)});
- if(p==='/stats')return json({parents:Number(row('SELECT COUNT(*) n FROM accounts').n),daily:[...sql.exec('SELECT * FROM email_stats ORDER BY day DESC LIMIT 30')]});
- if (p === '/mail-reserve') {
-   const day = new Date(now).toISOString().slice(0,10);
-   limit('mail:'+day, settingsFor(this.env).mailDaily, 86400000);
-   sql.exec('INSERT INTO email_stats VALUES(?,1,0) ON CONFLICT(day) DO UPDATE SET sent=sent+1', day);
-   return json({ok:true});
- }
- if(p==='/mail-failed'){sql.exec('INSERT INTO email_stats VALUES(?,0,1) ON CONFLICT(day) DO UPDATE SET failed=failed+1',new Date(now).toISOString().slice(0,10));return json({ok:true});}
- if(p==='/sink'){sql.exec('INSERT OR REPLACE INTO email_sink VALUES(?,?)',b.email,JSON.stringify(b.message));return json({ok:true});}
- if(p==='/sink-get')return json({message:JSON.parse(row('SELECT data FROM email_sink WHERE email=?',b.email)?.data||'null')});
- if(p==='/pending/set'){sql.exec('INSERT OR REPLACE INTO pending_links VALUES(?,?,?)',b.key,JSON.stringify({family:b.family||null,browser:b.browser||null}),now+600000);return json({ok:true});}
- if(p==='/pending/take'){const pending=row('SELECT data FROM pending_links WHERE key=?',b.key);sql.exec('DELETE FROM pending_links WHERE key=?',b.key);return json({family:pending&&(!JSON.parse(pending.data).browser||JSON.parse(pending.data).browser===b.browser)?JSON.parse(pending.data).family:null});}
- if(p==='/login'){if(typeof b.hash!=='string'||!/^jl1_[A-Za-z0-9_-]+$/.test(b.hash))fail('Invalid identity',401);let a=load(b.hash);a ||= {hash:b.hash,email:null,families:[],created:now,epoch:crypto.randomUUID(),email_prefs:{weekly:false,classUpdates:false,review:false,timezone:'America/Los_Angeles'},deliveries:{}};a.email=b.email||null;a.last_login=now;save(a);return json({account:a});}
- const a=load(b.hash);if(!a)fail('Sign in first',401);
- if(p==='/claim'){const enabled=b.key==='weekly'?a.email_prefs.weekly:b.key==='review'?a.email_prefs.review:b.key.startsWith('class:')?a.email_prefs.classUpdates:false;if(!enabled||!a.families.length||!Array.isArray(b.familyHashes)||b.familyHashes.some(hash=>!a.families.some(f=>f.hash===hash)))return json({claimed:false});if(a.deliveries[b.key]===b.value)return json({claimed:false});a.deliveries[b.key]=b.value;save(a);return json({claimed:true});}
- if(p==='/link'){if(!a.families.some(f=>f.hash===b.family.hash)&&a.families.length>=5)fail('At most five families per parent',409);a.families=a.families.filter(f=>f.hash!==b.family.hash);a.families.push(b.family);}
- else if(p==='/unlink')a.families=a.families.filter(f=>f.hash!==b.familyHash);
- else if(p==='/delete'){sql.exec('DELETE FROM accounts WHERE hash=?',b.hash);sql.exec('DELETE FROM email_sink WHERE email=?',a.email);return json({ok:true});}
- else if(p==='/prefs'){const v=b.prefs;try{new Intl.DateTimeFormat('en',{timeZone:v.timezone}).format();}catch{fail('Choose a valid timezone');}a.email_prefs={weekly:v.weekly===true,classUpdates:v.classUpdates===true,review:v.review===true,timezone:v.timezone};}
- else if(p==='/unsubscribe')a.email_prefs={...a.email_prefs,weekly:false,classUpdates:false,review:false};
- else if(p==='/delivered')a.deliveries[b.key]=b.value;
- else if(p==='/list')return json({accounts:[...sql.exec('SELECT data FROM accounts ORDER BY hash LIMIT 100 OFFSET ?',b.offset||0)].map(r=>JSON.parse(r.data))});
- else fail('Not found',404);save(a);return json({ok:true,account:a});
- }catch(e){return json({error:e.status?e.message:'Sign-in unavailable'},e.status||503);}});}
+import { sha256, equalSecret, normalizeCode, validCode } from "./auth.js";
+const json = (v, status = 200, headers = {}) =>
+  Response.json(v, {
+    status,
+    headers: (() => {
+      const h = new Headers(headers);
+      h.set("Cache-Control", "no-store");
+      h.set("Referrer-Policy", "no-referrer");
+      return h;
+    })(),
+  });
+const fail = (message, status = 400) => {
+  throw Object.assign(Error(message), { status });
+};
+const enc = new TextEncoder();
+export async function hmac(secret, value) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(value)))]
+    .map((n) => n.toString(16).padStart(2, "0"))
+    .join("");
 }
-async function familyCall(env,hash,path,data={},headers={}){return env.FAMILY.get(env.FAMILY.idFromName('fam:'+hash)).fetch(new Request('https://internal/api/internal/account/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Internal-Family-Hash':hash,...headers},body:JSON.stringify(data)}));}
-export async function linkFamily(env,account,code,epoch){const hash=await sha256(code);if(!account.families.some(f=>f.hash===hash)&&account.families.length>=5)fail('At most five families per parent',409);const r=await familyCall(env,hash,'link',{hash:account.hash,masked:maskEmail(account.email),...(epoch?{epoch}:{})});const b=await r.json();if(!r.ok)fail(b.error,r.status);try{await accountRequest(env,'/link',{hash:account.hash,family:{hash,name:b.name,code}});}catch(e){await familyCall(env,hash,'unlink',{hash:account.hash});throw e;}}
-async function verifiedFamily(request,env,code){code=normalizeCode(code);if(!validCode(code))fail('Family not found',404);const hash=await sha256(code),ip=await sha256(env.IP_HASH_SALT+':'+(request.headers.get('CF-Connecting-IP')||'local'));const registry=env.REGISTRY.get(env.REGISTRY.idFromName('registry'));const limit=kind=>registry.fetch(new Request('https://internal/limit',{method:'POST',body:JSON.stringify({kind,ip})}));const allowed=await limit('lookup-check');if(!allowed.ok)fail('Too many unknown family codes. Try later.',429);const headers=new Headers(request.headers);headers.set('X-Family-Code',code);headers.set('X-Internal-Family-Hash',hash);headers.delete('X-Internal-Account-Parent');const r=await env.FAMILY.get(env.FAMILY.idFromName('fam:'+hash)).fetch(new Request('https://internal/api/state',{headers}));if(!r.ok){await limit('lookup-failed');fail('Family not found',404);}const b=await r.json();if(!b.parent){const a=await accountSession(request,env);if(!a?.families.some(f=>f.hash===hash))fail('Unlock Parent mode first',401);const r=await familyCall(env,hash,'parents');const links=await r.json();if(!links.parents?.some(p=>p.hash===a.hash))fail('Unlock Parent mode first',401);}return code;}
-async function linkingProof(request,env,raw){const code=await verifiedFamily(request,env,raw);const r=await familyCall(env,await sha256(code),'proof');const {epoch}=await r.json();return {code,epoch};}
-export async function routeAuth(request,env){const u=new URL(request.url),p=u.pathname;if(!p.startsWith('/api/auth/')&&!p.startsWith('/auth/jesklabs/')&&!p.startsWith('/auth/google/')&&p!=='/auth/unsubscribe')return null;
- let callbackHeaders;
- try{if(p.startsWith('/auth/google/'))fail('Not found',404);
- const config=authConfig(env);if(p==='/api/auth/config'&&request.method==='GET')return json(config);
- if(!env.ACCOUNTS)fail('Sign-in not configured',404);if(!env.SESSION_SECRET||env.SESSION_SECRET.length<32)fail('Service secrets not configured',503);
- if(request.headers.has('Origin')&&request.headers.get('Origin')!==u.origin)fail('Cross-origin request denied',403);
- if(p.startsWith('/api/auth/code/')&&!config.email||['/api/auth/start','/api/auth/pending','/api/auth/confirm','/api/auth/decline','/auth/jesklabs/start','/auth/jesklabs/callback'].includes(p)&&!config.sso)fail('Not found',404);
- const write=request.method==='POST';let b={};if(write&&p!=='/auth/unsubscribe'){if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))fail('Send JSON',415);const reader=request.body?.getReader(),chunks=[];let length=0;if(reader)try{while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>4096){await reader.cancel();fail('Too large',413);}chunks.push(value);}}finally{reader.releaseLock();}const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}try{b=JSON.parse(new TextDecoder().decode(bytes)||'{}');}catch{fail('Invalid JSON');}if(!b||typeof b!=='object'||Array.isArray(b))fail('Send a JSON object');}
- const a=await accountSession(request,env),ip=request.headers.get('CF-Connecting-IP')||'local';
- const issue=async(account,family)=>{if(family)await linkFamily(env,account,family.code,family.epoch);return authCookie(await signedValue(env.SESSION_SECRET,'session',{hash:account.hash,epoch:account.epoch,exp:Date.now()+2592000000}));};
- const identity=async r=>{if(!r||typeof r.sub!=='string'||!/^jl1_[A-Za-z0-9_-]+$/.test(r.sub))fail('Unable to verify this account.',503);let email=r.email;if(!email){const user=await accountsRpc(env,'getUser',{sub:r.sub});if(user!==null&&(!user||user.sub!==r.sub||!Object.hasOwn(user,'email')))fail('Sign-in is temporarily unavailable.',503);email=user?.email||null;}return {sub:r.sub,email:email?normalizeEmail(email):null};};
- const login=async r=>(await accountRequest(env,'/login',{hash:r.sub,email:r.email})).account;
- const redirect=(path,headers=new Headers())=>{headers.set('Location',path);headers.set('Cache-Control','no-store');headers.set('Referrer-Policy','no-referrer');return new Response(null,{status:302,headers});};
- if(p==='/api/auth/session'&&request.method==='GET')return json(a?{signedIn:true,email:maskEmail(a.email),families:await Promise.all(a.families.map(async({hash,name})=>({hash:await familyRef(env,hash),name}))),prefs:a.email_prefs}:{signedIn:false});
- if(p==='/api/auth/signout'&&write){const headers=new Headers({'Cache-Control':'no-store'});for(const c of [authCookie('',0),flowCookie('',0),pendingCookie('',0),emailCookie('',0),'parent=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'])headers.append('Set-Cookie',c);return Response.json({ok:true},{headers});}
- if(p==='/api/auth/code/send'&&write){const email=normalizeEmail(b.email),key=await hmac(env.SESSION_SECRET,'email-link:'+email),family=b.familyCode?await linkingProof(request,env,b.familyCode):null,browser=crypto.randomUUID();const result=await accountsRpc(env,'startEmail',{email,ip});if(result?.ok!==true)fail('Sign-in is temporarily unavailable.',503);await accountRequest(env,'/pending/set',{key,family,browser:await hmac(env.SESSION_SECRET,'email-browser:'+browser)});return json({ok:true},200,{'Set-Cookie':emailCookie(browser)});}
- if(p==='/api/auth/code/verify'&&write){const email=normalizeEmail(b.email);if(typeof b.code!=='string'||!/^\d{6}$/.test(b.code))fail('Enter the six-digit code');const result=await accountsRpc(env,'verifyEmail',{email,code:b.code,ip});if(typeof result?.ssoTicket!=='string'||!result.ssoTicket)fail('Sign-in is temporarily unavailable.',503);const user=await identity(result),account=await login(user),{family}=await accountRequest(env,'/pending/take',{key:await hmac(env.SESSION_SECRET,'email-link:'+email),browser:await hmac(env.SESSION_SECRET,'email-browser:'+(getCookie(request,'__Host-jl_email')||''))});const cookie=await issue(account,family),target=new URL('/sso/attach',accountsOrigin(env,u));target.search=new URLSearchParams({ticket:result.ssoTicket,client:'spelling',return:'/?signedIn=1'}).toString();const headers=new Headers();headers.append('Set-Cookie',cookie);headers.append('Set-Cookie',emailCookie('',0));return json({ok:true,attachUrl:target.href},200,headers);}
- if ((p === '/api/auth/start' && write) || (p === '/auth/jesklabs/start' && request.method === 'GET')) {
-   const mode = write ? b.mode : u.searchParams.get('mode');
-   if (!['google','sso'].includes(mode) || mode === 'google' && !config.google) fail('Not found',404);
-   const pending = b.familyCode ? crypto.randomUUID() : null;
-   if (pending) await accountRequest(env, '/pending/set', {key:pending, family:await linkingProof(request,env,b.familyCode)});
-   const state = crypto.randomUUID(), verifier = crypto.randomUUID() + crypto.randomUUID();
-   const redirectUri = new URL('/auth/jesklabs/callback', local(u) ? u.origin : env.APP_ORIGIN).href;
-   const challenge = b64(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(verifier)))));
-   const flow = await signedValue(env.SESSION_SECRET, 'oauth', {state, verifier, mode, pending, redirectUri, exp:Date.now()+600000});
-   const target = new URL('/authorize', accountsOrigin(env,u));
-   target.search = new URLSearchParams({client:'spelling', redirect_uri:redirectUri, state, code_challenge:challenge,
-     code_challenge_method:'S256', ...(mode === 'google' ? {provider:'google'} : {prompt:'none'})}).toString();
-   return write ? json({url:target.href},200,{'Set-Cookie':flowCookie(flow)}) :
-     redirect(target.href, new Headers({'Set-Cookie':flowCookie(flow)}));
- }
- if(p==='/auth/jesklabs/callback'&&request.method==='GET'){callbackHeaders=new Headers({'Set-Cookie':flowCookie('',0)});const flow=await readValue(env.SESSION_SECRET,'oauth',getCookie(request,'__Host-jl_auth'));if(!flow||!await equalSecret(u.searchParams.get('state')||'',flow.state))return redirect('/?auth=error',callbackHeaders);if(flow.mode==='google'&&!config.google)fail('Not found',404);if(u.searchParams.has('error'))return redirect('/?auth='+(u.searchParams.get('error')==='login_required'?'signin':'error'),callbackHeaders);const code=u.searchParams.get('code');if(!code)return redirect('/?auth=error',callbackHeaders);const user=await identity(await accountsRpc(env,'exchangeCode',{code,codeVerifier:flow.verifier,redirectUri:flow.redirectUri}));if(flow.mode==='sso'){callbackHeaders.append('Set-Cookie',pendingCookie(await signedValue(env.SESSION_SECRET,'pending',{...user,pending:flow.pending,exp:Date.now()+600000})));return redirect('/?auth=confirm',callbackHeaders);}const {family}=flow.pending?await accountRequest(env,'/pending/take',{key:flow.pending}):{};callbackHeaders.append('Set-Cookie',await issue(await login(user),family));return redirect('/?signedIn=1',callbackHeaders);}
- const pending=await readValue(env.SESSION_SECRET,'pending',getCookie(request,'__Host-jl_pending'));
- if(p==='/api/auth/pending'&&request.method==='GET')return json({email:pending?maskEmail(pending.email):null});
- if(p==='/api/auth/decline'&&write)return json({ok:true},200,{'Set-Cookie':pendingCookie('',0)});
- if(p==='/api/auth/confirm'&&write){if(request.headers.get('Origin')!==u.origin)fail('Confirm from this app',403);if(!pending)fail('Sign-in expired. Please start again.',401);const {family}=pending.pending?await accountRequest(env,'/pending/take',{key:pending.pending}):{};const headers=new Headers();headers.append('Set-Cookie',await issue(await login(pending),family));headers.append('Set-Cookie',pendingCookie('',0));return json({ok:true},200,headers);}
- if(p==='/auth/unsubscribe'&&['GET','POST'].includes(request.method)){const t=await readValue(env.SESSION_SECRET,'unsubscribe',u.searchParams.get('token'));if(!t)fail('This unsubscribe link has expired',401);await accountRequest(env,'/unsubscribe',{hash:t.hash});return new Response('You are unsubscribed from Spellami emails.',{headers:{'Content-Type':'text/plain','Cache-Control':'no-store'}});}
- if(p==='/api/auth/parents'&&request.method==='GET'){const code=await verifiedFamily(request,env,request.headers.get('X-Family-Code')),r=await familyCall(env,await sha256(code),'parents'),list=await r.json();return json({parents:await Promise.all(list.parents.map(async parent=>({...parent,hash:await parentRef(env,parent.hash)})))});}
- if(p==='/api/auth/unlink'&&write){const code=await verifiedFamily(request,env,b.familyCode),hash=await sha256(code),r=await familyCall(env,hash,'parents'),list=await r.json();let sub;for(const parent of list.parents)if(await parentRef(env,parent.hash)===b.parentHash)sub=parent.hash;if(!sub)fail('Parent not linked',404);await familyCall(env,hash,'unlink',{hash:sub});await accountRequest(env,'/unlink',{hash:sub,familyHash:hash});return json({ok:true});}
- if(!a)fail('Sign in first',401);
- if(p==='/api/auth/link'&&write){await linkFamily(env,a,await verifiedFamily(request,env,b.familyCode));return json({ok:true});}
- if(p==='/api/auth/open'&&write){const refs=await Promise.all(a.families.map(f=>familyRef(env,f.hash))),f=a.families[refs.indexOf(b.hash)];if(!f)fail('Family not linked',403);if(!(await familyCall(env,f.hash,'open',{hash:a.hash})).ok)fail('Family not linked',403);return json({code:f.code});}
- if(p==='/api/auth/recover'&&request.method==='GET')return json({families:await Promise.all(a.families.map(async f=>({...f,hash:await familyRef(env,f.hash)})))});
- if(p==='/api/auth/prefs'&&write){await accountRequest(env,'/prefs',{hash:a.hash,prefs:b});return json({ok:true});}
- if(p==='/api/auth/delete'&&write){const deleted=await accountsRpc(env,'deleteLink',{sub:a.hash});if(!['link','user','none'].includes(deleted?.deleted))fail('Sign-in is temporarily unavailable.',503);for(const f of a.families)await familyCall(env,f.hash,'unlink',{hash:a.hash});await accountRequest(env,'/delete',{hash:a.hash});return json({ok:true},200,{'Set-Cookie':authCookie('',0)});}
- fail('Not found',404);
- }catch(e){if(callbackHeaders&&e.status===404)return json({error:'Not found'},404,callbackHeaders);if(callbackHeaders&&e.status!==404){callbackHeaders.set('Location','/?auth=error');callbackHeaders.set('Cache-Control','no-store');return new Response(null,{status:302,headers:callbackHeaders});}return json({error:e.status?e.message:'Sign-in unavailable',...(e.retryAfter?{retryAfter:e.retryAfter}:{})},e.status||503,e.retryAfter?{'Retry-After':String(e.retryAfter)}:{});}}
+export function normalizeEmail(v) {
+  if (typeof v !== "string") fail("Enter an email address");
+  const email = v.trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))
+    fail("Enter a valid email address");
+  return email;
+}
+export const maskEmail = (email) =>
+  email ? email[0] + "•••@" + email.split("@")[1] : "Google account";
+const b64 = (s) => btoa(s).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+const unb64 = (s) => atob(s.replaceAll("-", "+").replaceAll("_", "/"));
+const encodeBytes = (bytes) => b64(String.fromCharCode(...bytes));
+const decodeBytes = (value) => Uint8Array.from(unb64(value), (c) => c.charCodeAt(0));
+const privateKind = (kind) => ["session", "pending"].includes(kind);
+async function cookieKey(secret, kind) {
+  return crypto.subtle.importKey(
+    "raw",
+    Uint8Array.from((await hmac(secret, "private-cookie:" + kind)).match(/../g), (byte) =>
+      parseInt(byte, 16),
+    ),
+    "AES-GCM",
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+export async function signedValue(secret, kind, data) {
+  let bytes = enc.encode(JSON.stringify(data));
+  if (privateKind(kind)) {
+    const iv = crypto.getRandomValues(new Uint8Array(12)),
+      cipher = new Uint8Array(
+        await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await cookieKey(secret, kind), bytes),
+      );
+    bytes = new Uint8Array([...iv, ...cipher]);
+  }
+  const payload = encodeBytes(bytes);
+  return payload + "." + (await hmac(await hmac(secret, "family-practice:" + kind), payload));
+}
+export async function readValue(secret, kind, token, now = Date.now()) {
+  try {
+    if (!token || token.length > 4096) return null;
+    const [p, s, ...extra] = token.split(".");
+    if (
+      extra.length ||
+      !(await equalSecret(s || "", await hmac(await hmac(secret, "family-practice:" + kind), p)))
+    )
+      return null;
+    let bytes = decodeBytes(p);
+    if (privateKind(kind))
+      bytes = new Uint8Array(
+        await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: bytes.slice(0, 12) },
+          await cookieKey(secret, kind),
+          bytes.slice(12),
+        ),
+      );
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    return data.exp > now ? data : null;
+  } catch {
+    return null;
+  }
+}
+const getCookie = (r, name) =>
+  (r.headers.get("Cookie") || "").match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"))?.[1];
+const authCookie = (value, age = 2592000) =>
+  `fp_account=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+const flowCookie = (value, age = 600) =>
+  `__Host-jl_auth=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+const emailCookie = (value, age = 600) =>
+  `__Host-jl_email=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+const pendingCookie = (value, age = 600) =>
+  `__Host-jl_pending=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+export const authConfig = (env) => {
+  const email = !!env.ACCOUNTS_SVC && env.SIGNIN_EMAIL === "1",
+    google = !!env.ACCOUNTS_SVC && env.SIGNIN_GOOGLE === "1";
+  return { email, google, sso: email || google };
+};
+const local = (u) => ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+const accountsOrigin = (env, u) =>
+  env.ACCOUNTS_DEV === "1" && local(u) && env.ACCOUNTS_ORIGIN && local(new URL(env.ACCOUNTS_ORIGIN))
+    ? new URL(env.ACCOUNTS_ORIGIN).origin
+    : "https://accounts.jesklabs.com";
+export async function accountsRpc(env, method, input) {
+  let result;
+  try {
+    result = await env.ACCOUNTS_SVC[method](input);
+  } catch {
+    fail("Sign-in is temporarily unavailable. Please try again.", 503);
+  }
+  if (result?.error) {
+    const errors = {
+      rate_limited: ["Too many attempts. Please try again later.", 429],
+      invalid_email: ["Enter a valid email address.", 400],
+      invalid_code: ["That code is incorrect. Please try again.", 401],
+      expired: ["That code has expired. Request a new one.", 401],
+      invalid_grant: ["Sign-in expired. Please start again.", 401],
+      temporarily_unavailable: ["Sign-in is temporarily unavailable. Please try again.", 503],
+      invalid_identity: ["Unable to verify this account. Please try again.", 401],
+    };
+    const [message, status] = errors[result.error] || [
+      "Sign-in is temporarily unavailable. Please try again.",
+      503,
+    ];
+    throw Object.assign(Error(message), {
+      status,
+      retryAfter:
+        result.error === "rate_limited"
+          ? Math.max(1, Math.ceil(Number(result.retryAfter) || 60))
+          : undefined,
+    });
+  }
+  return result;
+}
+export async function accountRequest(env, path, data = {}) {
+  const r = await env.ACCOUNTS.get(env.ACCOUNTS.idFromName("accounts")).fetch(
+    new Request("https://internal" + path, { method: "POST", body: JSON.stringify(data) }),
+  );
+  const b = await r.json();
+  if (!r.ok) fail(b.error, r.status);
+  return b;
+}
+export const parentRef = (env, sub) => hmac(env.SESSION_SECRET, "account-parent:" + sub);
+export const familyRef = (env, hash) => hmac(env.SESSION_SECRET, "account-family:" + hash);
+export async function accountSession(request, env) {
+  if (!env.ACCOUNTS) return null;
+  const s = await readValue(env.SESSION_SECRET, "session", getCookie(request, "fp_account"));
+  if (!s) return null;
+  const a = await accountRequest(env, "/get", { hash: s.hash });
+  return a.account && a.account.epoch === s.epoch ? a.account : null;
+}
+export class AccountStore {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.env = env;
+    this.sql = ctx.storage.sql;
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS accounts(hash TEXT PRIMARY KEY,data TEXT NOT NULL); " +
+        "CREATE TABLE IF NOT EXISTS pending_links(key TEXT PRIMARY KEY,data TEXT NOT NULL,until INTEGER NOT NULL); " +
+        "CREATE TABLE IF NOT EXISTS account_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL); " +
+        "CREATE TABLE IF NOT EXISTS email_sink(email TEXT PRIMARY KEY,data TEXT NOT NULL); " +
+        "CREATE TABLE IF NOT EXISTS email_stats(day TEXT PRIMARY KEY,sent INTEGER NOT NULL DEFAULT 0,failed INTEGER NOT NULL DEFAULT 0);",
+    );
+  }
+  fetch(r) {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        const b = await r.json(),
+          p = new URL(r.url).pathname,
+          sql = this.sql,
+          now = Date.now();
+        const row = (q, ...v) => [...sql.exec(q, ...v)][0];
+        const load = (h) => {
+          const a = row("SELECT data FROM accounts WHERE hash=?", h);
+          return a ? JSON.parse(a.data) : null;
+        };
+        const save = (a) =>
+          sql.exec("INSERT OR REPLACE INTO accounts VALUES(?,?)", a.hash, JSON.stringify(a));
+        sql.exec("DELETE FROM account_limits WHERE until<=?", now);
+        sql.exec("DELETE FROM pending_links WHERE until<=?", now);
+        const limit = (key, max, ms) => {
+          if ((row("SELECT count FROM account_limits WHERE key=?", key)?.count || 0) >= max)
+            fail("Try again later", 429);
+          sql.exec(
+            "INSERT INTO account_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1",
+            key,
+            now + ms,
+          );
+        };
+        if (p === "/list")
+          return json({
+            accounts: [
+              ...sql.exec(
+                "SELECT data FROM accounts ORDER BY hash LIMIT 100 OFFSET ?",
+                b.offset || 0,
+              ),
+            ].map((r) => JSON.parse(r.data)),
+          });
+        if (p === "/get") return json({ account: load(b.hash) });
+        if (p === "/stats")
+          return json({
+            parents: Number(row("SELECT COUNT(*) n FROM accounts").n),
+            daily: [...sql.exec("SELECT * FROM email_stats ORDER BY day DESC LIMIT 30")],
+          });
+        if (p === "/mail-reserve") {
+          const day = new Date(now).toISOString().slice(0, 10);
+          limit("mail:" + day, settingsFor(this.env).mailDaily, 86400000);
+          sql.exec(
+            "INSERT INTO email_stats VALUES(?,1,0) ON CONFLICT(day) DO UPDATE SET sent=sent+1",
+            day,
+          );
+          return json({ ok: true });
+        }
+        if (p === "/mail-failed") {
+          sql.exec(
+            "INSERT INTO email_stats VALUES(?,0,1) ON CONFLICT(day) DO UPDATE SET failed=failed+1",
+            new Date(now).toISOString().slice(0, 10),
+          );
+          return json({ ok: true });
+        }
+        if (p === "/sink") {
+          sql.exec(
+            "INSERT OR REPLACE INTO email_sink VALUES(?,?)",
+            b.email,
+            JSON.stringify(b.message),
+          );
+          return json({ ok: true });
+        }
+        if (p === "/sink-get")
+          return json({
+            message: JSON.parse(
+              row("SELECT data FROM email_sink WHERE email=?", b.email)?.data || "null",
+            ),
+          });
+        if (p === "/pending/set") {
+          sql.exec(
+            "INSERT OR REPLACE INTO pending_links VALUES(?,?,?)",
+            b.key,
+            JSON.stringify({ family: b.family || null, browser: b.browser || null }),
+            now + 600000,
+          );
+          return json({ ok: true });
+        }
+        if (p === "/pending/take") {
+          const pending = row("SELECT data FROM pending_links WHERE key=?", b.key);
+          sql.exec("DELETE FROM pending_links WHERE key=?", b.key);
+          return json({
+            family:
+              pending &&
+              (!JSON.parse(pending.data).browser || JSON.parse(pending.data).browser === b.browser)
+                ? JSON.parse(pending.data).family
+                : null,
+          });
+        }
+        if (p === "/login") {
+          if (typeof b.hash !== "string" || !/^jl1_[A-Za-z0-9_-]+$/.test(b.hash))
+            fail("Invalid identity", 401);
+          let a = load(b.hash);
+          a ||= {
+            hash: b.hash,
+            email: null,
+            families: [],
+            created: now,
+            epoch: crypto.randomUUID(),
+            email_prefs: {
+              weekly: false,
+              classUpdates: false,
+              review: false,
+              timezone: "America/Los_Angeles",
+            },
+            deliveries: {},
+          };
+          a.email = b.email || null;
+          a.last_login = now;
+          save(a);
+          return json({ account: a });
+        }
+        const a = load(b.hash);
+        if (!a) fail("Sign in first", 401);
+        if (p === "/claim") {
+          const enabled =
+            b.key === "weekly"
+              ? a.email_prefs.weekly
+              : b.key === "review"
+                ? a.email_prefs.review
+                : b.key.startsWith("class:")
+                  ? a.email_prefs.classUpdates
+                  : false;
+          if (
+            !enabled ||
+            !a.families.length ||
+            !Array.isArray(b.familyHashes) ||
+            b.familyHashes.some((hash) => !a.families.some((f) => f.hash === hash))
+          )
+            return json({ claimed: false });
+          if (a.deliveries[b.key] === b.value) return json({ claimed: false });
+          a.deliveries[b.key] = b.value;
+          save(a);
+          return json({ claimed: true });
+        }
+        if (p === "/link") {
+          if (!a.families.some((f) => f.hash === b.family.hash) && a.families.length >= 5)
+            fail("At most five families per parent", 409);
+          a.families = a.families.filter((f) => f.hash !== b.family.hash);
+          a.families.push(b.family);
+        } else if (p === "/unlink") a.families = a.families.filter((f) => f.hash !== b.familyHash);
+        else if (p === "/delete") {
+          sql.exec("DELETE FROM accounts WHERE hash=?", b.hash);
+          sql.exec("DELETE FROM email_sink WHERE email=?", a.email);
+          return json({ ok: true });
+        } else if (p === "/prefs") {
+          const v = b.prefs;
+          try {
+            new Intl.DateTimeFormat("en", { timeZone: v.timezone }).format();
+          } catch {
+            fail("Choose a valid timezone");
+          }
+          a.email_prefs = {
+            weekly: v.weekly === true,
+            classUpdates: v.classUpdates === true,
+            review: v.review === true,
+            timezone: v.timezone,
+          };
+        } else if (p === "/unsubscribe")
+          a.email_prefs = { ...a.email_prefs, weekly: false, classUpdates: false, review: false };
+        else if (p === "/delivered") a.deliveries[b.key] = b.value;
+        else if (p === "/list")
+          return json({
+            accounts: [
+              ...sql.exec(
+                "SELECT data FROM accounts ORDER BY hash LIMIT 100 OFFSET ?",
+                b.offset || 0,
+              ),
+            ].map((r) => JSON.parse(r.data)),
+          });
+        else fail("Not found", 404);
+        save(a);
+        return json({ ok: true, account: a });
+      } catch (e) {
+        return json({ error: e.status ? e.message : "Sign-in unavailable" }, e.status || 503);
+      }
+    });
+  }
+}
+async function familyCall(env, hash, path, data = {}, headers = {}) {
+  return env.FAMILY.get(env.FAMILY.idFromName("fam:" + hash)).fetch(
+    new Request("https://internal/api/internal/account/" + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Internal-Family-Hash": hash, ...headers },
+      body: JSON.stringify(data),
+    }),
+  );
+}
+export async function linkFamily(env, account, code, epoch) {
+  const hash = await sha256(code);
+  if (!account.families.some((f) => f.hash === hash) && account.families.length >= 5)
+    fail("At most five families per parent", 409);
+  const r = await familyCall(env, hash, "link", {
+    hash: account.hash,
+    masked: maskEmail(account.email),
+    ...(epoch ? { epoch } : {}),
+  });
+  const b = await r.json();
+  if (!r.ok) fail(b.error, r.status);
+  try {
+    await accountRequest(env, "/link", {
+      hash: account.hash,
+      family: { hash, name: b.name, code },
+    });
+  } catch (e) {
+    await familyCall(env, hash, "unlink", { hash: account.hash });
+    throw e;
+  }
+}
+async function verifiedFamily(request, env, code) {
+  code = normalizeCode(code);
+  if (!validCode(code)) fail("Family not found", 404);
+  const hash = await sha256(code),
+    ip = await sha256(
+      env.IP_HASH_SALT + ":" + (request.headers.get("CF-Connecting-IP") || "local"),
+    );
+  const registry = env.REGISTRY.get(env.REGISTRY.idFromName("registry"));
+  const limit = (kind) =>
+    registry.fetch(
+      new Request("https://internal/limit", { method: "POST", body: JSON.stringify({ kind, ip }) }),
+    );
+  const allowed = await limit("lookup-check");
+  if (!allowed.ok) fail("Too many unknown family codes. Try later.", 429);
+  const headers = new Headers(request.headers);
+  headers.set("X-Family-Code", code);
+  headers.set("X-Internal-Family-Hash", hash);
+  headers.delete("X-Internal-Account-Parent");
+  const r = await env.FAMILY.get(env.FAMILY.idFromName("fam:" + hash)).fetch(
+    new Request("https://internal/api/state", { headers }),
+  );
+  if (!r.ok) {
+    await limit("lookup-failed");
+    fail("Family not found", 404);
+  }
+  const b = await r.json();
+  if (!b.parent) {
+    const a = await accountSession(request, env);
+    if (!a?.families.some((f) => f.hash === hash)) fail("Unlock Parent mode first", 401);
+    const r = await familyCall(env, hash, "parents");
+    const links = await r.json();
+    if (!links.parents?.some((p) => p.hash === a.hash)) fail("Unlock Parent mode first", 401);
+  }
+  return code;
+}
+async function linkingProof(request, env, raw) {
+  const code = await verifiedFamily(request, env, raw);
+  const r = await familyCall(env, await sha256(code), "proof");
+  const { epoch } = await r.json();
+  return { code, epoch };
+}
+export async function routeAuth(request, env) {
+  const u = new URL(request.url),
+    p = u.pathname;
+  if (
+    !p.startsWith("/api/auth/") &&
+    !p.startsWith("/auth/jesklabs/") &&
+    !p.startsWith("/auth/google/") &&
+    p !== "/auth/unsubscribe"
+  )
+    return null;
+  let callbackHeaders;
+  try {
+    if (p.startsWith("/auth/google/")) fail("Not found", 404);
+    const config = authConfig(env);
+    if (p === "/api/auth/config" && request.method === "GET") return json(config);
+    if (!env.ACCOUNTS) fail("Sign-in not configured", 404);
+    if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32)
+      fail("Service secrets not configured", 503);
+    if (request.headers.has("Origin") && request.headers.get("Origin") !== u.origin)
+      fail("Cross-origin request denied", 403);
+    if (
+      (p.startsWith("/api/auth/code/") && !config.email) ||
+      ([
+        "/api/auth/start",
+        "/api/auth/pending",
+        "/api/auth/confirm",
+        "/api/auth/decline",
+        "/auth/jesklabs/start",
+        "/auth/jesklabs/callback",
+      ].includes(p) &&
+        !config.sso)
+    )
+      fail("Not found", 404);
+    const write = request.method === "POST";
+    let b = {};
+    if (write && p !== "/auth/unsubscribe") {
+      if (!/^application\/json(?:;|$)/i.test(request.headers.get("Content-Type") || ""))
+        fail("Send JSON", 415);
+      const reader = request.body?.getReader(),
+        chunks = [];
+      let length = 0;
+      if (reader)
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            length += value.byteLength;
+            if (length > 4096) {
+              await reader.cancel();
+              fail("Too large", 413);
+            }
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      const bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      try {
+        b = JSON.parse(new TextDecoder().decode(bytes) || "{}");
+      } catch {
+        fail("Invalid JSON");
+      }
+      if (!b || typeof b !== "object" || Array.isArray(b)) fail("Send a JSON object");
+    }
+    const a = await accountSession(request, env),
+      ip = request.headers.get("CF-Connecting-IP") || "local";
+    const issue = async (account, family) => {
+      if (family) await linkFamily(env, account, family.code, family.epoch);
+      return authCookie(
+        await signedValue(env.SESSION_SECRET, "session", {
+          hash: account.hash,
+          epoch: account.epoch,
+          exp: Date.now() + 2592000000,
+        }),
+      );
+    };
+    const identity = async (r) => {
+      if (!r || typeof r.sub !== "string" || !/^jl1_[A-Za-z0-9_-]+$/.test(r.sub))
+        fail("Unable to verify this account.", 503);
+      let email = r.email;
+      if (!email) {
+        const user = await accountsRpc(env, "getUser", { sub: r.sub });
+        if (user !== null && (!user || user.sub !== r.sub || !Object.hasOwn(user, "email")))
+          fail("Sign-in is temporarily unavailable.", 503);
+        email = user?.email || null;
+      }
+      return { sub: r.sub, email: email ? normalizeEmail(email) : null };
+    };
+    const login = async (r) =>
+      (await accountRequest(env, "/login", { hash: r.sub, email: r.email })).account;
+    const redirect = (path, headers = new Headers()) => {
+      headers.set("Location", path);
+      headers.set("Cache-Control", "no-store");
+      headers.set("Referrer-Policy", "no-referrer");
+      return new Response(null, { status: 302, headers });
+    };
+    if (p === "/api/auth/session" && request.method === "GET")
+      return json(
+        a
+          ? {
+              signedIn: true,
+              email: maskEmail(a.email),
+              families: await Promise.all(
+                a.families.map(async ({ hash, name }) => ({
+                  hash: await familyRef(env, hash),
+                  name,
+                })),
+              ),
+              prefs: a.email_prefs,
+            }
+          : { signedIn: false },
+      );
+    if (p === "/api/auth/signout" && write) {
+      const headers = new Headers({ "Cache-Control": "no-store" });
+      for (const c of [
+        authCookie("", 0),
+        flowCookie("", 0),
+        pendingCookie("", 0),
+        emailCookie("", 0),
+        "parent=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+      ])
+        headers.append("Set-Cookie", c);
+      return Response.json({ ok: true }, { headers });
+    }
+    if (p === "/api/auth/code/send" && write) {
+      const email = normalizeEmail(b.email),
+        key = await hmac(env.SESSION_SECRET, "email-link:" + email),
+        family = b.familyCode ? await linkingProof(request, env, b.familyCode) : null,
+        browser = crypto.randomUUID();
+      const result = await accountsRpc(env, "startEmail", { email, ip });
+      if (result?.ok !== true) fail("Sign-in is temporarily unavailable.", 503);
+      await accountRequest(env, "/pending/set", {
+        key,
+        family,
+        browser: await hmac(env.SESSION_SECRET, "email-browser:" + browser),
+      });
+      return json({ ok: true }, 200, { "Set-Cookie": emailCookie(browser) });
+    }
+    if (p === "/api/auth/code/verify" && write) {
+      const email = normalizeEmail(b.email);
+      if (typeof b.code !== "string" || !/^\d{6}$/.test(b.code)) fail("Enter the six-digit code");
+      const result = await accountsRpc(env, "verifyEmail", { email, code: b.code, ip });
+      if (typeof result?.ssoTicket !== "string" || !result.ssoTicket)
+        fail("Sign-in is temporarily unavailable.", 503);
+      const user = await identity(result),
+        account = await login(user),
+        { family } = await accountRequest(env, "/pending/take", {
+          key: await hmac(env.SESSION_SECRET, "email-link:" + email),
+          browser: await hmac(
+            env.SESSION_SECRET,
+            "email-browser:" + (getCookie(request, "__Host-jl_email") || ""),
+          ),
+        });
+      const cookie = await issue(account, family),
+        target = new URL("/sso/attach", accountsOrigin(env, u));
+      target.search = new URLSearchParams({
+        ticket: result.ssoTicket,
+        client: "spelling",
+        return: "/?signedIn=1",
+      }).toString();
+      const headers = new Headers();
+      headers.append("Set-Cookie", cookie);
+      headers.append("Set-Cookie", emailCookie("", 0));
+      return json({ ok: true, attachUrl: target.href }, 200, headers);
+    }
+    if (
+      (p === "/api/auth/start" && write) ||
+      (p === "/auth/jesklabs/start" && request.method === "GET")
+    ) {
+      const mode = write ? b.mode : u.searchParams.get("mode");
+      if (!["google", "sso"].includes(mode) || (mode === "google" && !config.google))
+        fail("Not found", 404);
+      const pending = b.familyCode ? crypto.randomUUID() : null;
+      if (pending)
+        await accountRequest(env, "/pending/set", {
+          key: pending,
+          family: await linkingProof(request, env, b.familyCode),
+        });
+      const state = crypto.randomUUID(),
+        verifier = crypto.randomUUID() + crypto.randomUUID();
+      const redirectUri = new URL("/auth/jesklabs/callback", local(u) ? u.origin : env.APP_ORIGIN)
+        .href;
+      const challenge = b64(
+        String.fromCharCode(
+          ...new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(verifier))),
+        ),
+      );
+      const flow = await signedValue(env.SESSION_SECRET, "oauth", {
+        state,
+        verifier,
+        mode,
+        pending,
+        redirectUri,
+        exp: Date.now() + 600000,
+      });
+      const target = new URL("/authorize", accountsOrigin(env, u));
+      target.search = new URLSearchParams({
+        client: "spelling",
+        redirect_uri: redirectUri,
+        state,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        ...(mode === "google" ? { provider: "google" } : { prompt: "none" }),
+      }).toString();
+      return write
+        ? json({ url: target.href }, 200, { "Set-Cookie": flowCookie(flow) })
+        : redirect(target.href, new Headers({ "Set-Cookie": flowCookie(flow) }));
+    }
+    if (p === "/auth/jesklabs/callback" && request.method === "GET") {
+      callbackHeaders = new Headers({ "Set-Cookie": flowCookie("", 0) });
+      const flow = await readValue(
+        env.SESSION_SECRET,
+        "oauth",
+        getCookie(request, "__Host-jl_auth"),
+      );
+      if (!flow || !(await equalSecret(u.searchParams.get("state") || "", flow.state)))
+        return redirect("/?auth=error", callbackHeaders);
+      if (flow.mode === "google" && !config.google) fail("Not found", 404);
+      if (u.searchParams.has("error"))
+        return redirect(
+          "/?auth=" + (u.searchParams.get("error") === "login_required" ? "signin" : "error"),
+          callbackHeaders,
+        );
+      const code = u.searchParams.get("code");
+      if (!code) return redirect("/?auth=error", callbackHeaders);
+      const user = await identity(
+        await accountsRpc(env, "exchangeCode", {
+          code,
+          codeVerifier: flow.verifier,
+          redirectUri: flow.redirectUri,
+        }),
+      );
+      if (flow.mode === "sso") {
+        callbackHeaders.append(
+          "Set-Cookie",
+          pendingCookie(
+            await signedValue(env.SESSION_SECRET, "pending", {
+              ...user,
+              pending: flow.pending,
+              exp: Date.now() + 600000,
+            }),
+          ),
+        );
+        return redirect("/?auth=confirm", callbackHeaders);
+      }
+      const { family } = flow.pending
+        ? await accountRequest(env, "/pending/take", { key: flow.pending })
+        : {};
+      callbackHeaders.append("Set-Cookie", await issue(await login(user), family));
+      return redirect("/?signedIn=1", callbackHeaders);
+    }
+    const pending = await readValue(
+      env.SESSION_SECRET,
+      "pending",
+      getCookie(request, "__Host-jl_pending"),
+    );
+    if (p === "/api/auth/pending" && request.method === "GET")
+      return json({ email: pending ? maskEmail(pending.email) : null });
+    if (p === "/api/auth/decline" && write)
+      return json({ ok: true }, 200, { "Set-Cookie": pendingCookie("", 0) });
+    if (p === "/api/auth/confirm" && write) {
+      if (request.headers.get("Origin") !== u.origin) fail("Confirm from this app", 403);
+      if (!pending) fail("Sign-in expired. Please start again.", 401);
+      const { family } = pending.pending
+        ? await accountRequest(env, "/pending/take", { key: pending.pending })
+        : {};
+      const headers = new Headers();
+      headers.append("Set-Cookie", await issue(await login(pending), family));
+      headers.append("Set-Cookie", pendingCookie("", 0));
+      return json({ ok: true }, 200, headers);
+    }
+    if (p === "/auth/unsubscribe" && ["GET", "POST"].includes(request.method)) {
+      const t = await readValue(env.SESSION_SECRET, "unsubscribe", u.searchParams.get("token"));
+      if (!t) fail("This unsubscribe link has expired", 401);
+      await accountRequest(env, "/unsubscribe", { hash: t.hash });
+      return new Response("You are unsubscribed from Spellami emails.", {
+        headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
+      });
+    }
+    if (p === "/api/auth/parents" && request.method === "GET") {
+      const code = await verifiedFamily(request, env, request.headers.get("X-Family-Code")),
+        r = await familyCall(env, await sha256(code), "parents"),
+        list = await r.json();
+      return json({
+        parents: await Promise.all(
+          list.parents.map(async (parent) => ({
+            ...parent,
+            hash: await parentRef(env, parent.hash),
+          })),
+        ),
+      });
+    }
+    if (p === "/api/auth/unlink" && write) {
+      const code = await verifiedFamily(request, env, b.familyCode),
+        hash = await sha256(code),
+        r = await familyCall(env, hash, "parents"),
+        list = await r.json();
+      let sub;
+      for (const parent of list.parents)
+        if ((await parentRef(env, parent.hash)) === b.parentHash) sub = parent.hash;
+      if (!sub) fail("Parent not linked", 404);
+      await familyCall(env, hash, "unlink", { hash: sub });
+      await accountRequest(env, "/unlink", { hash: sub, familyHash: hash });
+      return json({ ok: true });
+    }
+    if (!a) fail("Sign in first", 401);
+    if (p === "/api/auth/link" && write) {
+      await linkFamily(env, a, await verifiedFamily(request, env, b.familyCode));
+      return json({ ok: true });
+    }
+    if (p === "/api/auth/open" && write) {
+      const refs = await Promise.all(a.families.map((f) => familyRef(env, f.hash))),
+        f = a.families[refs.indexOf(b.hash)];
+      if (!f) fail("Family not linked", 403);
+      if (!(await familyCall(env, f.hash, "open", { hash: a.hash })).ok)
+        fail("Family not linked", 403);
+      return json({ code: f.code });
+    }
+    if (p === "/api/auth/recover" && request.method === "GET")
+      return json({
+        families: await Promise.all(
+          a.families.map(async (f) => ({ ...f, hash: await familyRef(env, f.hash) })),
+        ),
+      });
+    if (p === "/api/auth/prefs" && write) {
+      await accountRequest(env, "/prefs", { hash: a.hash, prefs: b });
+      return json({ ok: true });
+    }
+    if (p === "/api/auth/delete" && write) {
+      const deleted = await accountsRpc(env, "deleteLink", { sub: a.hash });
+      if (!["link", "user", "none"].includes(deleted?.deleted))
+        fail("Sign-in is temporarily unavailable.", 503);
+      for (const f of a.families) await familyCall(env, f.hash, "unlink", { hash: a.hash });
+      await accountRequest(env, "/delete", { hash: a.hash });
+      return json({ ok: true }, 200, { "Set-Cookie": authCookie("", 0) });
+    }
+    fail("Not found", 404);
+  } catch (e) {
+    if (callbackHeaders && e.status === 404)
+      return json({ error: "Not found" }, 404, callbackHeaders);
+    if (callbackHeaders && e.status !== 404) {
+      callbackHeaders.set("Location", "/?auth=error");
+      callbackHeaders.set("Cache-Control", "no-store");
+      return new Response(null, { status: 302, headers: callbackHeaders });
+    }
+    return json(
+      {
+        error: e.status ? e.message : "Sign-in unavailable",
+        ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}),
+      },
+      e.status || 503,
+      e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {},
+    );
+  }
+}

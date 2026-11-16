@@ -13,7 +13,7 @@ export const SCRIPT = 'family-practice';
 export const MODULES = ['cloudflare/worker.js', 'cloudflare/core.js', 'cloudflare/mcp.js',
  'cloudflare/auth.js', 'cloudflare/tts.js', 'cloudflare/sharing.js', 'cloudflare/accounts.js',
  'cloudflare/emails.js', 'cloudflare/notifications.js', 'cloudflare/legacy.js', 'lib/practice.js',
- 'cloudflare/settings.js', 'cloudflare/runtime-settings.js'];
+ 'cloudflare/settings.js', 'cloudflare/runtime-settings.js', 'cloudflare/public/verse-mastery.js'];
 
 export const OPTIONAL_SECRETS = ['OPS_TOKEN', 'RESEND_API_KEY'];
 export const SCHEDULES = [{ cron: '0 * * * *' }];
