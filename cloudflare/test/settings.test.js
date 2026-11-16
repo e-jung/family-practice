@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {deploy, main} from '../deploy.mjs';
@@ -19,8 +19,10 @@ test('invalid settings stop even a dry run before network or asset preparation',
   await assert.rejects(deploy({root, dryRun:true}), /Invalid settings/);
 });
 
-test('settings defaults are valid and malformed input falls back to the same policy', () => {
+test('settings defaults are valid and malformed input falls back to the same policy', async () => {
   assert.deepEqual(validate(defaults), []);
+  // The Worker fallback must stay identical to the deployed file; one policy, two copies.
+  assert.deepEqual(JSON.parse(await readFile(new URL('../settings.json', import.meta.url), 'utf8')), defaults);
   assert.deepEqual(load('{').value, defaults);
   assert.deepEqual(load(undefined).value, defaults);
   assert.ok(validate({...defaults, notifications:{weekly:{day:7, hour:24}, review:{days:[2,2], hour:17}}}).length);
