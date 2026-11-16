@@ -73,19 +73,28 @@ export class RegistryLimits {
     this.ctx=ctx;this.sql=ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS ops_families(hash TEXT PRIMARY KEY,created INTEGER NOT NULL,active TEXT NOT NULL); CREATE TABLE IF NOT EXISTS ops_family_days(hash TEXT NOT NULL,day TEXT NOT NULL,test INTEGER NOT NULL,learn INTEGER NOT NULL,verse INTEGER NOT NULL,pin_lockouts INTEGER NOT NULL,PRIMARY KEY(hash,day)); CREATE TABLE IF NOT EXISTS ops_voice(day TEXT PRIMARY KEY,synthesized_characters INTEGER NOT NULL DEFAULT 0,cache_hits INTEGER NOT NULL DEFAULT 0,quota_429 INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL)');
+    // Family-creation and unknown-code throttles; kept apart from voice quota counters.
+    this.sql.exec('CREATE TABLE IF NOT EXISTS ops_throttles(day TEXT NOT NULL,kind TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(day,kind))');
   }
   fetch(request) {
     return this.ctx.blockConcurrencyWhile(async()=> {
       const path=new URL(request.url).pathname, today=new Date().toISOString().slice(0,10);
       this.sql.exec('DELETE FROM ops_family_days WHERE day<?',new Date(Date.now()-30*86400000).toISOString().slice(0,10));
       this.sql.exec('DELETE FROM ops_voice WHERE day<?',new Date(Date.now()-30*86400000).toISOString().slice(0,10));
+      this.sql.exec('DELETE FROM ops_throttles WHERE day<?',new Date(Date.now()-30*86400000).toISOString().slice(0,10));
       if(path==='/stats') {
         const ago=n=>new Date(Date.now()-n*86400000).toISOString().slice(0,10);
         const f=[...this.sql.exec('SELECT COUNT(*) total,COALESCE(SUM(created>=?),0) created7,COALESCE(SUM(created>=?),0) created30,COALESCE(SUM(active>=?),0) active7 FROM ops_families',Date.now()-7*86400000,Date.now()-30*86400000,ago(6))][0];
         const a=[...this.sql.exec('SELECT COALESCE(SUM(test),0) test,COALESCE(SUM(learn),0) learn,COALESCE(SUM(verse),0) verse,COALESCE(SUM(pin_lockouts),0) pin_lockouts FROM ops_family_days WHERE day>=?',ago(6))][0];
         const voiceDays=new Map([...this.sql.exec('SELECT * FROM ops_voice WHERE day>=? ORDER BY day DESC',ago(6))].map(row=>[row.day,row]));
         const ttsDaily=Array.from({length:7},(_,i)=>voiceDays.get(ago(i)) || {day:ago(i),synthesized_characters:0,cache_hits:0,quota_429:0});
-        return json({asOf:new Date().toISOString(),coverage:'Families observed since aggregate reporting was enabled; pre-existing creation dates unknown. Windows use UTC days.',families:f,attempts7:{test:a.test,learn:a.learn,verse:a.verse},pinLockouts7:a.pin_lockouts,ttsDaily});
+        const throttles7={create:0,lookup:0};
+        for(const row of this.sql.exec('SELECT kind,SUM(count) n FROM ops_throttles WHERE day>=? GROUP BY kind',ago(6))) throttles7[row.kind]=row.n;
+        return json({
+          asOf:new Date().toISOString(),
+          coverage:'Families observed since aggregate reporting was enabled; pre-existing creation dates unknown. Windows use UTC days.',
+          families:f,attempts7:{test:a.test,learn:a.learn,verse:a.verse},pinLockouts7:a.pin_lockouts,throttles7,ttsDaily,
+        });
       }
       const payload=await request.json();
       if(path==='/report') {
@@ -105,7 +114,8 @@ export class RegistryLimits {
       if(!['create','lookup-check','lookup-failed','tts','mcp','sharing-read','sharing-import','sharing-create'].includes(kind) || !/^[a-f0-9]{64}$/.test(ip)) return json({error:'Invalid limit'},400);
       const now=Date.now();this.sql.exec('DELETE FROM limits WHERE until<=?',now);
       const get=key=>[...this.sql.exec('SELECT * FROM limits WHERE key=?',key)][0];
-      const quotaHit=()=>this.sql.exec('INSERT INTO ops_voice(day,quota_429) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET quota_429=quota_429+1',today);
+      const throttled=name=>this.sql.exec(
+        'INSERT INTO ops_throttles VALUES(?,?,1) ON CONFLICT(day,kind) DO UPDATE SET count=count+1',today,name);
       const bump=(key,ms)=>this.sql.exec('INSERT INTO limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',key,now+ms);
       if(kind.startsWith('sharing-')) {
         if(kind==='sharing-create'&&!/^[a-f0-9]{64}$/.test(family||''))return json({error:'Invalid limit'},400);
@@ -130,10 +140,10 @@ export class RegistryLimits {
           this.sql.exec('INSERT INTO limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=count+excluded.count',key,characters,expiry);
         }
       } else if(kind==='create') {
-        if((get('create:'+ip)?.count||0)>=5 || (get('global')?.count||0)>=200) { quotaHit(); return json({error:'Family creation limit reached. Try later.'},429); }
+        if((get('create:'+ip)?.count||0)>=5 || (get('global')?.count||0)>=200) { throttled('create'); return json({error:'Family creation limit reached. Try later.'},429); }
         bump('create:'+ip,3600000);bump('global',86400000);
       } else {
-        if((get('lookup:'+ip)?.count||0)>=30) { quotaHit(); return json({error:'Too many unknown family codes. Try in 15 minutes.'},429); }
+        if((get('lookup:'+ip)?.count||0)>=30) { throttled('lookup'); return json({error:'Too many unknown family codes. Try in 15 minutes.'},429); }
         if(kind==='lookup-failed') bump('lookup:'+ip,900000);
       }
       return json({ok:true});

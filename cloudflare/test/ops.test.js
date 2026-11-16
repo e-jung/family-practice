@@ -81,3 +81,14 @@ test('registry snapshots are idempotent, historical registration is lazy, and UT
 });
 
  test('accounts ops reports numeric parents and binding health only',async t=>{const f=emptyFixture(t);f.env.OPS_TOKEN='operator-secret';const stats=async()=>(await f.req('/api/ops/stats',undefined,auth)).body.accounts;assert.deepEqual(await stats(),{parents:0,service:'unbound'});let calls=0;f.env.ACCOUNTS_SVC={getUser:async({sub})=>{assert.match(sub,/^jl1_probe/);calls++;return null;}};assert.deepEqual(await stats(),{parents:0,service:'ok'});assert.equal(calls,1);f.env.ACCOUNTS_SVC.getUser=async()=>({error:'temporarily_unavailable'});assert.deepEqual(await stats(),{parents:0,service:'error'});f.env.ACCOUNTS_SVC.getUser=async()=>{throw Error('private detail');};assert.deepEqual(await stats(),{parents:0,service:'error'});});
+test('creation and unknown-code throttles count as throttles, never as voice quota hits',async t=>{
+  const f=emptyFixture(t);f.env.OPS_TOKEN='operator-secret';
+  for(let i=0;i<5;i++)assert.equal((await f.req('/api/families',{pin:'1234'})).status,201);
+  assert.equal((await f.req('/api/families',{pin:'1234'})).status,429);
+  const bogus={'X-Family-Code':'not-a-code'};
+  for(let i=0;i<30;i++)assert.equal((await f.req('/api/state',undefined,bogus)).status,404);
+  assert.equal((await f.req('/api/state',undefined,bogus)).status,429);
+  const stats=(await f.req('/api/ops/stats',undefined,auth)).body;
+  assert.deepEqual(stats.throttles7,{create:1,lookup:1});
+  assert.ok(stats.ttsDaily.every(row=>row.quota_429===0));
+});

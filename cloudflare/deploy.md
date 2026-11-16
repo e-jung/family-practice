@@ -278,8 +278,10 @@ The route does not require a family code or parent session. All responses are
 put it in browser assets, query strings, logs, or shared links.
 
 Response contract: `asOf`, `coverage`, `families: {total,created7,created30,active7}`,
-`attempts7: {test,learn,verse}`, `pinLockouts7`, and `ttsDaily` (exactly seven UTC dates, zero-filled,
-newest first: `day,synthesized_characters,cache_hits,quota_429`). Test includes
+`attempts7: {test,learn,verse}`, `pinLockouts7`, `throttles7: {create,lookup}` (rejected family creations and
+unknown-code lookups), and `ttsDaily` (exactly seven UTC dates, zero-filled,
+newest first: `day,synthesized_characters,cache_hits,quota_429`). `quota_429` counts only voice-budget
+rejections. Test includes
 ordinary spelling and tricky-word attempts. A PIN lockout is counted when the
 tenth failed PIN triggers a lockout, not each subsequent rejected request.
 Successful synthesis counts characters; reservations still charge failed AI
