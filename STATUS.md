@@ -56,7 +56,7 @@ Google was enabled after the first real Google round trip through shared Account
 ## Roadmap
 
 **Done**
-- Architecture phase 2 (2026-11-16, local only): validated settings and optional instance profiles; hosted plan matches the old production metadata except SETTINGS. Not deployed.
+- Architecture phase 2 (2026-11-16, deployed `0cf11ab`): validated settings and optional instance profiles; deployed with `--instance jesklabs`. The planned bindings matched the old production metadata except the new SETTINGS. Live: auth config `email:true, google:true, sso:true`; prod smoke 53 requests/64 assertions; legacy handoff 13 checks; `spelling.jesklabs.com` still 301s.
 - Architecture phase 1 (2026-11-16): retired the separate LAN build at `lan-build-final`; added a zero-dependency check and Node 24 CI with a shrinking readability baseline.
 - Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email and Google sign-in on 2026-11-15).
 - Private-by-link spelling snapshots and single-admin class feeds, independent imports with optional verses, family follows, client-side QR, MCP sharing tools, and additive `v3` ShareStore migration (live 2026-11-14).
@@ -75,7 +75,7 @@ Google was enabled after the first real Google round trip through shared Account
 
 ## Debt
 
-From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. Phases 1–2 (guardrails, retirement, settings and profiles) are implemented locally pending review/deployment; later phases remain pending.
+From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. Phases 1–2 (guardrails, retirement, settings and profiles) are deployed; phases 3–4 remain pending.
 
 1. **Oversized browser entry points.** `cloudflare/public/app.js` (1,632 lines) exceeds the 1,000-line limit and mixes app state, speech, practice flows, progress charts and parent editing in one closure. Target: a small shell/router plus practice, progress and parent modules.
 2. **Resolved 2026-11-16 — two builds.** The LAN server/UI, Piper adapter, tests and Docker files were retired after checking imports. `lan-build-final` preserves the final version; only the Worker remains supported. Shared `lib/practice.js` and its tests stay in use.
