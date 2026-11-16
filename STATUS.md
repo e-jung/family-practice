@@ -10,7 +10,7 @@ Last updated: 2026-11-16
 
 - Hosted instance: https://spellami.jesklabs.com (listed as "spellami" on jesklabs.com). The former https://spelling.jesklabs.com stays attached to the same Worker as a legacy host: pages 301 (path and query kept), `/mcp` 308, old APIs 410, and its `/sw.js` hands a device's saved Family Code to `/f/<code>` on the new origin, then unregisters.
 - Runtime: one Cloudflare Worker (`family-practice`) on the Workers Free plan, with Static Assets, SQLite-backed Durable Objects (`FamilyDatabase` per family, `RegistryLimits`, `TtsCache`, `ShareStore`, `AccountStore`), and Workers AI for speech. Migrations deployed: `v1`–`v4`; hourly notification cron configured.
-- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v14`.
+- Deployed version: `main` at the most recent "deploy" entry in the changelog below. Service worker shell `VERSION` = `v15`.
 - Observability: Workers Logs enabled (head sampling 1.0). Aggregate stats at `GET /api/ops/stats` (bearer `OPS_TOKEN`; numbers only).
 - The operator runs a weekly automated review (uptime probes, error logs, Workers AI usage against the free tier, family/activity counts, GitHub issues) that reports only when something needs attention.
 
@@ -56,7 +56,7 @@ Google was enabled after the first real Google round trip through shared Account
 ## Roadmap
 
 **Done**
-- Architecture phases 3–4 (2026-11-16, implemented locally, not deployed): spelling round reducer, shared verse mastery policy, shell/feature split and readable edge modules. Shell v15 prepared; features remain paused pending review/deployment.
+- Architecture phases 3–4 (2026-11-16, deployed `7584d7c`): spelling round reducer, shared verse mastery policy, shell/feature split and readable edge modules. Shell v15. Architecture cleanup is complete; remaining readability offenders are tracked by the shrinking baseline.
 - Architecture phase 2 (2026-11-16, deployed `0cf11ab`): validated settings and optional instance profiles; deployed with `--instance jesklabs`. The planned bindings matched the old production metadata except the new SETTINGS. Live: auth config `email:true, google:true, sso:true`; prod smoke 53 requests/64 assertions; legacy handoff 13 checks; `spelling.jesklabs.com` still 301s.
 - Architecture phase 1 (2026-11-16): retired the separate LAN build at `lan-build-final`; added a zero-dependency check and Node 24 CI with a shrinking readability baseline.
 - Optional parent sign-in delegated to shared Jesklabs Accounts: subject-keyed links, SSO-first entry with explicit confirmation, opt-in notifications (deployed 2026-11-14; email and Google sign-in on 2026-11-15).
@@ -76,14 +76,14 @@ Google was enabled after the first real Google round trip through shared Account
 
 ## Debt
 
-From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. Phases 1–2 (guardrails, retirement, settings and profiles) are deployed; phases 3–4 are implemented locally on `arch-p34`, not deployed. Features remain paused pending review and deployment.
+From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). The owner-approved `ARCHITECTURE.md` sets the fix order and target shape. All four phases are deployed (2026-11-16). Remaining items below are tracked by the shrinking baseline.
 
-1. **Resolved locally (2026-11-16): browser shell split.** The router/state shell now wires speech, spelling/Learn, verses, progress, parent and welcome feature modules. Each is below 1,000 lines; shell v15 includes all modules in its precache. Not deployed.
+1. **Resolved 2026-11-16 — browser shell split.** The router/state shell now wires speech, spelling/Learn, verses, progress, parent and welcome feature modules. Each is below 1,000 lines; shell v15 includes all modules in its precache.
 2. **Resolved 2026-11-16 — two builds.** The LAN server/UI, Piper adapter, tests and Docker files were retired after checking imports. `lan-build-final` preserves the final version; only the Worker remains supported. Shared `lib/practice.js` and its tests stay in use.
-3. **Resolved locally (2026-11-16): spelling round reducer.** Test and due-review use pure named states/events for first try, retry, reveal, advance, completion and quit; invalid events are ignored. Learn retains its tested existing reducer. Not deployed.
-4. **Resolved locally (2026-11-16): one verse mastery policy.** Progress, digest and explanatory UI copy share the same pure policy, preserving existing wording/history/mode and star rules. Not deployed.
+3. **Resolved 2026-11-16 — spelling round reducer.** Test and due-review use pure named states/events for first try, retry, reveal, advance, completion and quit; invalid events are ignored. Learn retains its tested existing reducer.
+4. **Resolved 2026-11-16 — one verse mastery policy.** Progress, digest and explanatory UI copy share the same pure policy, preserving existing wording/history/mode and star rules.
 5. **Resolved (2026-11-16): tunables centralized.** Voice budgets, mail reservation cap, notification schedule and review batch now use validated `cloudflare/settings.json`, uploaded as `SETTINGS`; runtime falls back to defaults on invalid input.
-6. **Partly resolved locally (2026-11-16): readable edges.** Accounts, notifications, email markup and sharing UI are reformatted without behavior changes. The browser split removes its size/line-length debt; remaining baseline offenders are still tracked by the shrinking gate.
+6. **Partly resolved 2026-11-16 — readable edges.** Accounts, notifications, email markup and sharing UI are reformatted without behavior changes. The browser split removes its size/line-length debt; remaining baseline offenders are still tracked by the shrinking gate.
 7. **Resolved 2026-11-16 — single check and CI.** `npm run check` runs all Node tests and source size/readability gates locally and in Node 24 CI. Existing offenders are explicitly recorded in `scripts/check-baseline.json`; allowances can only shrink. Oversized/compressed source cleanup remains debt 1 and 6.
 
 ## Decisions
@@ -129,7 +129,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog — local architecture work
 
-- 2026-11-16: phases 3–4 implemented locally on `arch-p34`, not deployed. Pure spelling round transitions and shared verse mastery; browser feature modules and shell v15 precache; readable Accounts, notifications, email markup and sharing UI. No intended behavior, API, layout, copy or email-output changes. Production remains phases 1–2 / shell v14. Local verification: 177/177 tests, eight unchanged email golden fixtures, API smoke 53 requests/65 assertions, two desktop/mobile journeys with zero console/page errors, and legacy handoff 13 checks (`EXIT 0`). Readability offenders shrink 48→42 and long lines 625→464; every new module is under 1,000 lines. Zero-network deployment dry-run preserves bindings/metadata/schedules/secrets/routes; adds eight browser modules and the shared mastery Worker module. Physical iOS and live deployment remain unverified.
+- 2026-11-16 deploy (`7584d7c`), shell v15: architecture phases 3–4. Live: dry-run matched prod metadata/schedules/secrets/routes (only modules and assets changed); auth config `email:true, google:true, sso:true`; prod smoke 53 requests/64 assertions; new modules and sw v15 served; `spelling.jesklabs.com` 301s; desktop/mobile load has no app console errors (Cloudflare's injected analytics beacon is blocked by the strict CSP, as intended). Opus review: reformatted Accounts, notifications, email and sharing-UI modules are identical after minification. Before deploy: Pure spelling round transitions and shared verse mastery; browser feature modules and shell v15 precache; readable Accounts, notifications, email markup and sharing UI. No intended behavior, API, layout, copy or email-output changes. Local verification: 177/177 tests, eight unchanged email golden fixtures, API smoke 53 requests/65 assertions, two desktop/mobile journeys with zero console/page errors, and legacy handoff 13 checks (`EXIT 0`). Readability offenders shrink 48→42 and long lines 625→464; every new module is under 1,000 lines. Zero-network deployment dry-run preserves bindings/metadata/schedules/secrets/routes; adds eight browser modules and the shared mastery Worker module. Physical iOS remains unverified.
 
 ## Changelog (deploys)
 
