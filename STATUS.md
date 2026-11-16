@@ -4,7 +4,7 @@ The durable, non-code record for Spellami (named Family Practice until 2026-11-1
 
 **Keep this current.** Any change that ships, any decision made, or any roadmap shift updates this file in the same commit. Write current truth; replace stale lines instead of appending. This repo is public: never put credentials, account IDs, family codes, real children's names, private network addresses or personal infrastructure details here.
 
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 
 ## Live
 
@@ -69,6 +69,18 @@ Google was enabled after the first real Google round trip through shared Account
 - A "daily practice" home: review due words, then the current list, then a verse, in one tap.
 - Backups: a gentle reminder to export, or optional encrypted cloud backup without collecting identity.
 - Multi-admin classroom/roster/school-account mode: **not planned**. Single-admin class-list publishing is the deliberately limited sharing feature (see decisions).
+
+## Debt
+
+From the 2026-11-16 architecture audit against the operator's engineering rules (file size, one source of truth, explicit state machines, config over code, one app/one home). Fix order and target shape are pending an agreed `ARCHITECTURE.md`; no refactor starts before that.
+
+1. **Oversized browser entry points.** `cloudflare/public/app.js` (1,632 lines) and `public/app.js` (1,548) exceed the 1,000-line limit and mix app state, speech, practice flows, progress charts and parent editing in one closure. Target: a small shell/router plus practice, progress and parent modules.
+2. **Two builds, duplicated logic.** The Worker and the LAN build keep parallel validators, storage/API workflows and practice UIs instead of differing only at adapters, and they already disagree (Worker integer/date validation is stricter; the LAN build accepts coercible IDs and normalizable invalid dates). The LAN build also lacks Learn, Review, PWA, sharing and sign-in. Open question: retire it or converge it on a shared core.
+3. **Spelling round has no explicit state machine.** Test/retry/reveal/advance lives in booleans, disabled controls, mutable counters and view-version checks. Target: a pure round reducer with named states and tested events, like `learn.js`.
+4. **Verse mastery rules exist three times.** Stars/thresholds (95/70, memory/first-letter ≥95) are implemented separately in `core.js` progress, the email digest and `server.js`, and repeated in UI copy. Target: one pure mastery function and policy constants used everywhere, with copy derived from them.
+5. **Tunables are literals.** Notification days/hours (`notifications.js`), voice budgets (`worker.js`), the 500/day email cap (`accounts.js`) and the 15-word review batch (`lib/practice.js`) need a code change to adjust. Target: one validated policy module with defaults.
+6. **Compressed one-line modules.** `accounts.js` (max line 1,229 chars), `sharing-ui.js` (1,369) and `emails.js` (1,208) hide their size from a line-count check. Target: readable formatting plus a max-line-length gate.
+7. **No single `check` command or CI.** `node --test` exists, but there is no lint/format config, no file-size gate and no CI workflow. Target: `npm run check` (tests, size and line-length with a shrinking baseline for current offenders) run locally and in CI.
 
 ## Decisions
 
