@@ -28,6 +28,14 @@ its pure answer checking, verse comparison, and review scheduling core, covered 
 The Node/Docker LAN build was retired on 2026-11-16 and archived at `lan-build-final`.
 Do not restore its server, UI, Piper adapter or deployment files.
 
+## Browser code map
+
+- `cloudflare/public/app.js` owns routing, live app state, shared DOM helpers and feature wiring. Feature factories receive live state/accessors and edge actions; they do not copy app state.
+- `spelling.js` renders spelling, Learn and due-review flows; `practice-round.js` is the pure named-state/event spelling reducer (including retries, reveal, next, quit and skip semantics). Its subject registry admits verse lifecycle policies later; Learn retains its existing `learn.js` reducer, and verses are not forced into spelling's retry lifecycle.
+- `verses.js` owns verse practice; `progress.js` owns progress and charts; `parent.js` owns editing/settings; `welcome.js` owns landing/privacy; `speech.js` owns speech playback/cache/cancellation.
+- `verse-mastery.js` is the single pure verse-star/history policy and explanatory copy, imported by progress, Worker progress and the email-digest edge. It is uploaded both as a browser asset and a Worker module.
+- Shell v15 precaches every feature/policy module. No build step, runtime dependency or extra service was added.
+
 ## Worker architecture and limits
 
 - `cloudflare/worker.js` routes assets and APIs. `cloudflare/core.js` holds per-family storage and practice API logic.
