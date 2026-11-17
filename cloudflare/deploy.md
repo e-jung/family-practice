@@ -99,8 +99,8 @@ Cache failures are best-effort and do not disable synthesis.
 
 Aura-1 costs **1,363.64 neurons per 1,000 characters**: the 10,000-neuron daily free
 allowance covers approximately 7,300 characters. RegistryLimits reserves cache-miss
-characters before inference: **6,000 globally per UTC day, 1,500 per family per UTC
-day, 2,000 per hashed IP per hour** (hour window starts at first reservation).
+characters before inference: **6,000 globally per UTC day, 4,000 per family per UTC
+day, 4,000 per hashed IP per hour** (hour window starts at first reservation).
 Failures count; cache hits do not. Global/family buckets expire at UTC midnight.
 These ceilings leave headroom but are not a guarantee against account-wide usage.
 Quota returns 429 `voice_quota`; missing AI binding, invalid audio, model error or

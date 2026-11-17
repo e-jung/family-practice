@@ -15,8 +15,8 @@ const freeze = value => {
 export const defaults = freeze({
   "voice": {
     "globalDaily": 6000,
-    "familyDaily": 1500,
-    "ipHourly": 2000,
+    "familyDaily": 4000,
+    "ipHourly": 4000,
     "request": 300
   },
   "mailDaily": 500,

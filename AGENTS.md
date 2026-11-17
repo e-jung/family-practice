@@ -69,7 +69,7 @@ Do not restore its server, UI, Piper adapter or deployment files.
 - Browser speech quality/availability varies, particularly on Linux Chromium; cloud speech provides a consistent default, with device fallback to keep practice available.
 - Worker: Cloudflare Workers AI `@cf/deepgram/aura-1`, default speaker `asteria` (override `TTS_SPEAKER`), MP3 through `/api/tts`; device speech on failure/quota or explicit selection.
 - Cache: `caches.default` → SQLite `TtsCache` → AI. Keys include model, speaker, encoding, language, and text hash. Validate MP3 signatures; max clip 512 KB, durable LRU cap 400 MiB.
-- Cache-miss character budgets: 6,000 globally/UTC day, 1,500/family/UTC day, 2,000/hashed IP/hour, 300/request. Failed inference counts; cache hits do not. Account-wide free quotas can change independently.
+- Cache-miss character budgets: 6,000 globally/UTC day, 4,000/family/UTC day, 4,000/hashed IP/hour, 300/request. Failed inference counts; cache hits do not. Account-wide free quotas can change independently.
 - Migration `v1` creates family/registry objects; additive `v2` creates `TtsCache`; additive `v3` creates `ShareStore`; additive `v4` creates `AccountStore`. Never rewrite deployed migration history.
 
 ## Development and checks

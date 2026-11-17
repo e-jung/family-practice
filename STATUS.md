@@ -34,7 +34,7 @@ Last updated: 2026-11-17
 
 MCP connections need no new secrets, bindings, accounts or registry migration. Their rows and request/write counters live in the existing family DO. Connection tokens survive PIN changes; revoke explicitly.
 
-Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day global, 1,500/family/day, 2,000/IP/hour; family creation 5/hour/IP plus a global daily cap; unknown-code lookups and PIN failures throttled. Workers AI free allowance is 10,000 neurons/day (Aura-1 ≈ 1,364 neurons per 1k characters).
+Free-tier budgets the app enforces itself: voice cache misses 6,000 chars/day global, 4,000/family/day, 4,000/IP/hour; family creation 5/hour/IP plus a global daily cap; unknown-code lookups and PIN failures throttled. Workers AI free allowance is 10,000 neurons/day (Aura-1 ≈ 1,364 neurons per 1k characters).
 
 ## Release checklist
 
@@ -134,6 +134,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-17 voice budget raise (settings only, shell v16): per-family voice budget 1,500 → 4,000 characters/UTC day and per-IP 2,000 → 4,000/hour; global 6,000/day unchanged (stays inside the Workers AI free allowance). Why: a real family hit the family cap mid-test after adding a new list (five `/api/tts` 429s at 02:25Z); the device-voice fallback was silent on desktop Chrome/Linux, so words weren't read aloud.
 - 2026-11-17 deploy (`501f646`), shell v16: Incord-style verse ladder replaces whole-verse typing modes in the menu. Live: prod smoke 69 requests/91 assertions; sw v16 and `verse-ladder.js` served; `spelling.jesklabs.com` 301s. Physical iOS unverified. Before deploy:
   Four steps (visible, one-third hidden, two-thirds hidden, all hidden), first-letter taps/physical keys,
   deterministic nested masks, visible-word type-along without memory credit, gentle same-step retries,
