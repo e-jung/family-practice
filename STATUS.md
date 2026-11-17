@@ -64,7 +64,7 @@ Google was enabled after the first real Google round trip through shared Account
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
 **Next up**
-- Verse first-letter ladder prepared on `verse-ladder` (shell v16), not yet deployed; local verification below.
+- Verse first-letter ladder (2026-11-17, deployed `501f646`, shell v16): Incord-style Learn it replaces whole-verse typing.
 - Real-device pass on iPhone (installed PWA): header safe area, haptics, key sound, Aura playback after first tap.
 - Verse spaced repetition: extend the Leitner bank to verses, keyed by the current wording.
 - Parent view of the word bank: per-word box and due date, and the ability to retire or reset a word.
@@ -128,14 +128,18 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - `signin`: optional parent identities and code recovery; Family Code/PIN-only access unchanged. Singleton AccountStore v4, Google state/PKCE flow, hashed emailed codes, masked family links, opt-in Sunday 5pm weekly summaries, Tuesday/Friday review nudges and hourly batched class updates, signed one-click unsubscribe, numeric mail counters and a 500/day reservation cap. Google/Resend live delivery and production cron are unverified; no production changes made.
 - Verification: 151 unit tests (including eight email golden fixtures), uploader zero-network dry-run, local email-sink recovery smoke (76 checks), core API smoke (53 requests/65 assertions), desktop/mobile UI and parent/practice/sharing layout smokes pass. Sign-in UI smoke passes 193 assertions at desktop and 390×844, saves 44 screenshots plus eight email HTML samples, and reports zero console/CSP/third-party-request errors. Class publication API smoke also passes all 58 assertions, including the real ten-minute publish throttle. Independent auth review findings were fixed with regressions (pending-link revocation, safe Lock, auth lookup throttles, full multi-family digests).
 
-## Changelog — not yet deployed
+## Changelog — local architecture work
 
-- 2026-11-17, shell v16: Incord-style verse ladder replaces whole-verse typing modes in the menu.
+- 2026-11-16 deploy (`7584d7c`), shell v15: architecture phases 3–4. Live: dry-run matched prod metadata/schedules/secrets/routes (only modules and assets changed); auth config `email:true, google:true, sso:true`; prod smoke 53 requests/64 assertions; new modules and sw v15 served; `spelling.jesklabs.com` 301s; desktop/mobile load has no app console errors (Cloudflare's injected analytics beacon is blocked by the strict CSP, as intended). Opus review: reformatted Accounts, notifications, email and sharing-UI modules are identical after minification. Before deploy: Pure spelling round transitions and shared verse mastery; browser feature modules and shell v15 precache; readable Accounts, notifications, email markup and sharing UI. No intended behavior, API, layout, copy or email-output changes. Local verification: 177/177 tests, eight unchanged email golden fixtures, API smoke 53 requests/65 assertions, two desktop/mobile journeys with zero console/page errors, and legacy handoff 13 checks (`EXIT 0`). Readability offenders shrink 48→42 and long lines 625→464; every new module is under 1,000 lines. Zero-network deployment dry-run preserves bindings/metadata/schedules/secrets/routes; adds eight browser modules and the shared mastery Worker module. Physical iOS remains unverified.
+
+## Changelog (deploys)
+
+- 2026-11-17 deploy (`501f646`), shell v16: Incord-style verse ladder replaces whole-verse typing modes in the menu. Live: prod smoke 69 requests/91 assertions; sw v16 and `verse-ladder.js` served; `spelling.jesklabs.com` 301s. Physical iOS unverified. Before deploy:
   Four steps (visible, one-third hidden, two-thirds hidden, all hidden), first-letter taps/physical keys,
   deterministic nested masks, visible-word type-along without memory credit, gentle same-step retries,
   current-wording resume derived server-side, and shared server-authoritative scoring. Last-step 95%+
   earns three stars; legacy advanced attempts still count. Read/listen and reference quiz remain.
-  No database migration, settings changes, runtime dependency, push or deployment.
+  No database migration, settings changes or runtime dependency.
   Verification: `npm run check` passes 191 tests and the readability gate (no offender growth),
   including unchanged email goldens and shared progress/digest/MCP policy coverage. Local API smoke:
   69 requests / 92 assertions; desktop/mobile UI smoke: two journeys, no console/page/external-request
@@ -149,14 +153,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
   (zero unexpected errors; the deliberate 400 is expected). That failure-interception harness blocks
   service workers; the separate two-journey UI smoke activates and verifies the real service worker.
   Zero-network deploy dry-run includes the shared scorer and browser assets. Actual iPhone standalone
-  remains unverified; no production changes made.
-
-## Changelog — local architecture work
-
-- 2026-11-16 deploy (`7584d7c`), shell v15: architecture phases 3–4. Live: dry-run matched prod metadata/schedules/secrets/routes (only modules and assets changed); auth config `email:true, google:true, sso:true`; prod smoke 53 requests/64 assertions; new modules and sw v15 served; `spelling.jesklabs.com` 301s; desktop/mobile load has no app console errors (Cloudflare's injected analytics beacon is blocked by the strict CSP, as intended). Opus review: reformatted Accounts, notifications, email and sharing-UI modules are identical after minification. Before deploy: Pure spelling round transitions and shared verse mastery; browser feature modules and shell v15 precache; readable Accounts, notifications, email markup and sharing UI. No intended behavior, API, layout, copy or email-output changes. Local verification: 177/177 tests, eight unchanged email golden fixtures, API smoke 53 requests/65 assertions, two desktop/mobile journeys with zero console/page errors, and legacy handoff 13 checks (`EXIT 0`). Readability offenders shrink 48→42 and long lines 625→464; every new module is under 1,000 lines. Zero-network deployment dry-run preserves bindings/metadata/schedules/secrets/routes; adds eight browser modules and the shared mastery Worker module. Physical iOS remains unverified.
-
-## Changelog (deploys)
-
+  remains unverified.
 - 2026-11-16 voice-quota telemetry fix (`6601c20`, no user-visible change, shell v15): family-creation and unknown-code throttles now count in the ops `throttles7` breakdown instead of the voice counter's `quota_429`. Live: a blocked creation reports `create:1` and `quota_429` stays 0; prod smoke 53 requests/64 assertions incl. MCP tools/scopes/revocation. Older mis-attributed `quota_429` entries age out of the 30-day history.
 - 2026-11-15 Google sign-in on (no code change, shell v14): redeployed with `FP_SIGNIN_EMAIL=1 FP_SIGNIN_GOOGLE=1` after Incord's real prod Google round trip through Accounts passed. Live: config `email:true, google:true, sso:true`; Google start 302s to Accounts `/authorize?client=spelling&provider=google` with the registered callback, and Accounts 303s to Google with the `accounts.jesklabs.com/oauth/google/callback` redirect; SSO start unchanged. A real Google sign-in into Spellami is not yet exercised.
 - 2026-11-15 email sign-in on (`ceb9192`, no code change, shell v14): redeployed with `FP_SIGNIN_EMAIL=1`, Google still `0`. Live: config `email:true, google:false, sso:true`; SSO start 302s to Accounts `/authorize` with the registered callback; Google start 404. Real end-to-end email check against prod: code sent by shared Accounts from `Spellami <hello@jesklabs.com>` landed in a Gmail inbox, verify issued a session and an SSO attach URL, a throwaway family was created, linked (parents list shows the masked email), recovered and opened from an account-only cookie jar (code matched), then deleted (link cleaned up) and the sign-in deleted. Parent Lock signs the account out too, by design.
