@@ -87,6 +87,9 @@ From the 2026-11-16 architecture audit against the operator's engineering rules 
 6. **Partly resolved 2026-11-16 — readable edges.** Accounts, notifications, email markup and sharing UI are reformatted without behavior changes. The browser split removes its size/line-length debt; remaining baseline offenders are still tracked by the shrinking gate.
 7. **Resolved 2026-11-16 — single check and CI.** `npm run check` runs all Node tests and source size/readability gates locally and in Node 24 CI. Existing offenders are explicitly recorded in `scripts/check-baseline.json`; allowances can only shrink. Oversized/compressed source cleanup remains debt 1 and 6.
 
+8. **Ops counts use UTC days (2026-11-17).** `cohorts` and `familyDays28` bucket practice by UTC date, so an evening session in Pacific time can land on the next date or split across two. Fine for spotting a 3-days-a-week habit; bucket by the family's time zone if the weekly count ever looks wrong.
+9. **Smoke families from before the flag (2026-11-17).** Orphan "Smoke A" families from aborted pre-flag runs still count as real until deleted; deleted families' activity from the last 30 days shows in the `deleted` cohort until it ages out.
+
 ## Decisions
 
 Newest first. Each entry gives what was decided and why; if a decision is reversed, edit the entry and say what replaced it.
@@ -134,6 +137,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-17 ops cohorts (no user-visible change): smoke scripts flag their families (`smoke: true` on create); `/api/ops/stats` adds `cohorts` (real/smoke/deleted, last 7 UTC days) and `familyDays28` (per live non-smoke family, 12-hex id prefix, active days in the last 28) so the operator's weekly report can count one family separately. The registry adds an `ops_families.smoke` column in place; deleting a smoke family drops its activity.
 - 2026-11-17 no spoken spell-out (shell v17): after a second miss the word stays on screen and its cached clip replays slowly instead of synthesizing a new letter-by-letter clip (owner request; the kids can see the word, and each spell-out cost new voice characters). UI smoke now asserts the second miss makes no new cloud request.
 - 2026-11-17 voice budget raise (settings only, shell v16): per-family voice budget 1,500 → 4,000 characters/UTC day and per-IP 2,000 → 4,000/hour; global 6,000/day unchanged (stays inside the Workers AI free allowance). Why: a real family hit the family cap mid-test after adding a new list (five `/api/tts` 429s at 02:25Z); the device-voice fallback was silent on desktop Chrome/Linux, so words weren't read aloud.
 - 2026-11-17 deploy (`501f646`), shell v16: Incord-style verse ladder replaces whole-verse typing modes in the menu. Live: prod smoke 69 requests/91 assertions; sw v16 and `verse-ladder.js` served; `spelling.jesklabs.com` 301s. Physical iOS unverified. Before deploy:

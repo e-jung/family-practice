@@ -26,10 +26,12 @@ try{
  eq((await req(parent,'/api/auth/code/send',{email},{Origin:'https://evil.example'})).status,403);
  eq((await oauth(stranger,'sso')).url.searchParams.get('auth'),'signin');
  eq((await req(stranger,'/api/auth/confirm',{})).status,401);
- const a=(await ok(parent,'/api/families',{name:'Sign-in smoke A',pin:'1234'},201)).body.code;parent.code=a;families.push({code:a,name:'Sign-in smoke A'});
+ const a=(await ok(parent,'/api/families',{name:'Sign-in smoke A',pin:'1234',smoke:true},201)).body.code;
+ parent.code=a;families.push({code:a,name:'Sign-in smoke A'});
  await ok(parent,'/api/parent/lock',{});eq((await req(parent,'/api/auth/code/send',{email,familyCode:a})).status,401);
  await ok(parent,'/api/parent/unlock',{pin:'1234'});await login(parent,email,a);
- const b=(await ok(parent,'/api/families',{name:'Sign-in smoke B',pin:'1234'},201)).body.code;parent.code=b;families.push({code:b,name:'Sign-in smoke B'});await ok(parent,'/api/auth/link',{familyCode:b});parent.jar.delete('parent');
+ const b=(await ok(parent,'/api/families',{name:'Sign-in smoke B',pin:'1234',smoke:true},201)).body.code;
+ parent.code=b;families.push({code:b,name:'Sign-in smoke B'});await ok(parent,'/api/auth/link',{familyCode:b});parent.jar.delete('parent');
  eq((await ok(parent,'/api/state')).body.parent,true);
  const recovery=(await ok(parent,'/api/auth/recover')).body.families;eq(recovery.map(f=>f.code).sort(),[a,b].sort());const ah=recovery.find(f=>f.code===a).hash,bh=recovery.find(f=>f.code===b).hash;
  await ok(parent,'/api/auth/signout',{});eq((await ok(parent,'/api/auth/session')).body.signedIn,false);

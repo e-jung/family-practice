@@ -92,3 +92,41 @@ test('creation and unknown-code throttles count as throttles, never as voice quo
   assert.deepEqual(stats.throttles7,{create:1,lookup:1});
   assert.ok(stats.ttsDaily.every(row=>row.quota_429===0));
 });
+test('smoke-flagged families stay out of the real cohort and leave nothing behind when deleted',async t=>{
+  const f=emptyFixture(t);f.env.OPS_TOKEN='operator-secret';
+  await f.req('/api/families',{name:'Real',pin:'5678'});const real=f.getCode();
+  const registry=[...f.databases].find(([k])=>k==='registry')[1].db;
+  await f.req('/api/families',{name:'Smoke',pin:'5678',smoke:true});
+  const day=new Date().toISOString().slice(0,10);
+  const [realRow,smokeRow]=registry.prepare('SELECT hash,smoke FROM ops_families ORDER BY smoke').all();
+  assert.equal(realRow.smoke,0);assert.equal(smokeRow.smoke,1);
+  for(const [hash,n] of [[realRow.hash,2],[smokeRow.hash,5]])registry.prepare('INSERT INTO ops_family_days VALUES(?,?,?,?,?,?)').run(hash,day,n,0,1,0);
+  let stats=(await f.req('/api/ops/stats',undefined,auth)).body;
+  assert.deepEqual(stats.cohorts,{real:{activeFamilies7:1,attempts7:{test:2,learn:0,verse:1}},smoke:{activeFamilies7:1,attempts7:{test:5,learn:0,verse:1}}});
+  assert.deepEqual(stats.familyDays28,[{id:realRow.hash.slice(0,12),created:stats.familyDays28[0].created,days:[{day,test:2,learn:0,verse:1}]}]);
+  assert.ok(!JSON.stringify(stats).includes(realRow.hash));assert.ok(!JSON.stringify(stats).includes(real));
+  // Deleting the smoke family drops its activity; the real family's stays.
+  await f.req('/api/admin/delete-family',{pin:'5678',confirmation:'Smoke'});
+  stats=(await f.req('/api/ops/stats',undefined,auth)).body;
+  assert.deepEqual(Object.keys(stats.cohorts),['real']);assert.equal(stats.families.total,1);
+});
+test('a deleted real family\'s recent activity is reported as its own cohort',async t=>{
+  const f=emptyFixture(t);f.env.OPS_TOKEN='operator-secret';
+  await f.req('/api/families',{name:'Gone',pin:'5678'});
+  const registry=[...f.databases].find(([k])=>k==='registry')[1].db,hash=registry.prepare('SELECT hash FROM ops_families').get().hash;
+  registry.prepare('INSERT INTO ops_family_days VALUES(?,?,?,?,?,?)').run(hash,new Date().toISOString().slice(0,10),3,0,0,0);
+  await f.req('/api/admin/delete-family',{pin:'5678',confirmation:'Gone'});
+  const stats=(await f.req('/api/ops/stats',undefined,auth)).body;
+  assert.deepEqual(stats.cohorts,{deleted:{activeFamilies7:1,attempts7:{test:3,learn:0,verse:0}}});
+  assert.deepEqual(stats.familyDays28,[]);
+});
+test('registry adds the smoke column to an older ops_families table and keeps its rows',async t=>{
+  const f=emptyFixture(t);
+  await f.req('/api/families',{name:'Old',pin:'5678'});
+  const {db,object}=[...f.databases].find(([k])=>k==='registry')[1];
+  db.exec('DROP TABLE ops_families; CREATE TABLE ops_families(hash TEXT PRIMARY KEY,created INTEGER NOT NULL,active TEXT NOT NULL)');
+  db.prepare('INSERT INTO ops_families VALUES(?,?,?)').run('b'.repeat(64),1,'');
+  new object.constructor(object.ctx,f.env);
+  assert.deepEqual(db.prepare('PRAGMA table_info(ops_families)').all().map(c=>c.name),['hash','created','active','smoke']);
+  assert.deepEqual({...db.prepare('SELECT * FROM ops_families').get()},{hash:'b'.repeat(64),created:1,active:'',smoke:0});
+});

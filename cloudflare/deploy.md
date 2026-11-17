@@ -290,6 +290,16 @@ Active families have at least one spelling, Learn, or verse attempt (opening a p
 Attempts/active/lockouts use the current UTC date plus six preceding dates;
 creation windows use rolling 7/30 days.
 
+Smoke and screenshot scripts create families with `smoke: true` in the
+`POST /api/families` body; the flag only affects these stats. `cohorts` splits
+the last seven UTC days by `real`, `smoke` and `deleted` (activity left by a
+deleted non-smoke family; a deleted smoke family's activity is dropped), each
+`{activeFamilies7, attempts7}`. `familyDays28` lists up to 200 live non-smoke
+families as `{id, created, days}`: `id` is the first 12 hex characters of the
+family hash (enough for an operator to pin their own family, not a Family
+Code), and `days` holds `day,test,learn,verse` for active UTC days in the last 28.
+`families` and `attempts7` stay all-inclusive.
+
 Families report only their hash, existence, creation timestamp, active UTC date,
 and daily numeric counters to the existing registry on mutations and their first
 read each UTC day. Stats query registry SQL only; no family fanout. Registry rows

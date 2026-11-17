@@ -18,7 +18,7 @@ async function call(path,data) {
   const body=await r.json();assert.equal(r.ok,true,`${path}: ${JSON.stringify(body)}`);return body;
 }
 async function seed() {
-  code=(await call('/api/families',{name:'SRS screenshot fixture',pin:PIN})).code;
+  code=(await call('/api/families',{name:'SRS screenshot fixture',pin:PIN,smoke:true})).code;
   await call('/api/parent/unlock',{pin:PIN});
   await call('/api/admin/kids',{name:'Sam',grade:'2'});
   const kid=(await call('/api/state')).kids[0];

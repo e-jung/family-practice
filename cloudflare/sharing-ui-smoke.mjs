@@ -42,7 +42,7 @@ async function familyFixture(viewport, label, kidNames) {
   const context = await contextFor(viewport,label);
   const family = {context,code:'',name:`Sharing UI ${label} ${Date.now()}`};
   families.push(family);
-  family.code = (await api(family,'/api/families',{name:family.name,pin})).code;
+  family.code = (await api(family,'/api/families',{name:family.name,pin,smoke:true})).code;
   await api(family,'/api/parent/unlock',{pin});
   for (const name of kidNames) await api(family,'/api/admin/kids',{name});
   family.kids = (await api(family,'/api/state')).kids;

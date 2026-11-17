@@ -13,7 +13,7 @@ async function req(path,data,options={}) {
   const text=await r.text();return {status:r.status,body:r.headers.get('Content-Type')?.includes('json')?JSON.parse(text):text};
 }
 async function createFamily(name,pin) {
-  const result=await req('/api/families',{name,pin});
+  const result=await req('/api/families',{name,pin,smoke:true});
   if(result.status===201 && result.body.code)families.set(result.body.code,{name,pin});
   if(result.status===429)throw Error(`Local smoke family creation was rate-limited (HTTP 429): ${result.body.error || 'creation quota reached'}. Wait for the quota window to reset or use a fresh disposable local Wrangler state directory; deleting families does not reset the creation quota.`);
   check(result.status,201);

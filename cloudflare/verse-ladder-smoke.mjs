@@ -31,7 +31,7 @@ try {
         if (!response.ok) throw Error(JSON.stringify(result));
         return result;
       };
-      code = (await call('/api/families', {pin: '2468'})).code;
+      code = (await call('/api/families', {pin: '2468', smoke: true})).code;
       await call('/api/parent/unlock', {pin: '2468'});
       await call('/api/admin/kids', {name: 'Sam'});
       const state = await (await fetch('/api/state', {headers: {'X-Family-Code': code}})).json();

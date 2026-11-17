@@ -29,7 +29,7 @@ async function seed() {
       const r=await fetch(path,{method:data===undefined?'GET':'POST',headers:{'X-Family-Code':code,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
       const body=await r.json();if(!r.ok)throw Error(path+': '+body.error);return body;
     };
-    code=(await call('/api/families',{name:'The Hill family',pin:PIN})).code;
+    code=(await call('/api/families',{name:'The Hill family',pin:PIN,smoke:true})).code;
     await call('/api/parent/unlock',{pin:PIN});
     await call('/api/admin/kids',{name:'Sam',grade:'2'});
     await call('/api/admin/kids',{name:'Maya',grade:'4'});

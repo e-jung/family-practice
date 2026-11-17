@@ -66,7 +66,7 @@ async function editDialog(page, kind, label) {
 }
 try {
   fixture = await browser.newContext({extraHTTPHeaders:smokeHeaders});
-  code = (await call(fixture, '/api/families', {pin})).code;
+  code = (await call(fixture, '/api/families', {pin, smoke: true})).code;
   await call(fixture, '/api/parent/unlock', {pin});
   await call(fixture, '/api/admin/kids', {name: 'Layout kid', grade: '3'});
   await call(fixture, '/api/admin/kids', {name: 'Second kid'});

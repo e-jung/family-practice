@@ -497,6 +497,8 @@ export function createHandler(ctx, env) {
         const pinHash=await hashPin(b.pin,salt), epoch=crypto.randomUUID();
         run("INSERT INTO family VALUES(1,?,?,?,?)",name,salt,pinHash,epoch);
         sql.exec("INSERT OR REPLACE INTO ops_meta VALUES('created',?)",Date.now());
+        // Smoke runs flag their throwaway families so ops counts can leave them out.
+        if(b.smoke===true) sql.exec("INSERT OR REPLACE INTO ops_meta VALUES('smoke',1)");
         const familyIdHash=await sha256(env.familyIdHash+epoch);
         res.setHeader("Set-Cookie",cookie(await signSession(env.SESSION_SECRET,familyIdHash),43200));
         return json({name},201);

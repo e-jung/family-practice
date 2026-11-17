@@ -19,7 +19,7 @@ try {
       const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Family-Code': code}, body: JSON.stringify(data)});
       const b = await r.json(); if (!r.ok) throw Error(path + ': ' + JSON.stringify(b)); return b;
     };
-    code = (await call('/api/families', {pin: '2468'})).code;
+    code = (await call('/api/families', {pin: '2468', smoke: true})).code;
     await call('/api/parent/unlock', {pin: '2468'});
     await call('/api/admin/kids', {name: 'Sam'});
     const state = await (await fetch('/api/state', {headers: {'X-Family-Code': code}})).json();

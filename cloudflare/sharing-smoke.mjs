@@ -14,7 +14,7 @@ async function req(f,path,data,method=data===undefined?'GET':'POST') {
 async function ok(f,path,data,status=200,method){const r=await req(f,path,data,method);assert.equal(r.status,status,`${path}: ${JSON.stringify(r.body)}`);checks++;return r.body;}
 const anonymous=family();let slug,cls,firstWeek,publishedAt;
 try{
- for(const [f,name] of [[a,'Sharing smoke A'],[b,'Sharing smoke B']]){f.code=(await ok(f,'/api/families',{name,pin:'1234'},201)).code;}
+ for(const [f,name] of [[a,'Sharing smoke A'],[b,'Sharing smoke B']]){f.code=(await ok(f,'/api/families',{name,pin:'1234',smoke:true},201)).code;}
  await ok(a,'/api/admin/kids',{name:'Alex'});
  for(const name of ['Sam','Casey'])await ok(b,'/api/admin/kids',{name});
  const list=await ok(a,'/api/admin/lists',{kid_id:1,title:'Kind words',words:[{word:'friend',sentence:'A friend is kind.'},{word:'light',sentence:'The light is bright.'}]},201);

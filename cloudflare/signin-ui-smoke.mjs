@@ -105,7 +105,7 @@ try {
     await page.goto(accounts.origin+'/sso/logout?client=spelling&return=/');
     await page.getByRole('heading',{name:'Parent sign-in (optional)',exact:true}).waitFor();
     const family={context,name:`UI sign-in garden ${size}`,code:''};
-    family.code=(await api(context,'/api/families',{name:family.name,pin})).code;families.push(family);
+    family.code=(await api(context,'/api/families',{name:family.name,pin,smoke:true})).code;families.push(family);
     // Real code join and PIN unlock before linking: neither family auth nor identity is mocked.
     await api(context,'/api/parent/lock',{},family.code);
     await page.getByLabel('Family code',{exact:true}).fill(family.code);
@@ -163,7 +163,7 @@ try {
     check((await api(fresh,'/api/state',undefined,family.code)).parent,'account grants parent access without PIN on new device');
     await shot(freshPage,`new-device-auto-open-${size}`);
     const second={context:fresh,name:`UI sign-in meadow ${size}`,code:''};
-    second.code=(await api(fresh,'/api/families',{name:second.name,pin})).code;families.push(second);
+    second.code=(await api(fresh,'/api/families',{name:second.name,pin,smoke:true})).code;families.push(second);
     await api(fresh,'/api/auth/link',{familyCode:second.code},second.code);
     await freshPage.reload();
     await freshPage.getByRole('button',{name:'Choose another family',exact:true}).click();

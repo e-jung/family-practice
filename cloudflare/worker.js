@@ -58,6 +58,7 @@ export class FamilyDatabase {
         try {
           const report={family:this.env.familyIdHash,exists,active:[...sql.exec("SELECT day FROM ops_daily WHERE test+learn+verse>0 ORDER BY day DESC LIMIT 1")][0]?.day || "",
             created:Number([...sql.exec("SELECT value FROM ops_meta WHERE key='created'")][0]?.value||0),
+            smoke:[...sql.exec("SELECT value FROM ops_meta WHERE key='smoke'")].length>0,
             days:[...sql.exec('SELECT * FROM ops_daily WHERE day>=?',new Date(Date.now()-30*86400000).toISOString().slice(0,10))]};
           await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('registry')).fetch(new Request('https://internal/report',{method:'POST',body:JSON.stringify(report)}));
           this.reportDay=day;
@@ -75,6 +76,8 @@ export class RegistryLimits {
     this.sql.exec('CREATE TABLE IF NOT EXISTS limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL)');
     // Family-creation and unknown-code throttles; kept apart from voice quota counters.
     this.sql.exec('CREATE TABLE IF NOT EXISTS ops_throttles(day TEXT NOT NULL,kind TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(day,kind))');
+    if(![...this.sql.exec('PRAGMA table_info(ops_families)')].some(c=>c.name==='smoke'))
+      this.sql.exec('ALTER TABLE ops_families ADD COLUMN smoke INTEGER NOT NULL DEFAULT 0');
   }
   fetch(request) {
     return this.ctx.blockConcurrencyWhile(async()=> {
@@ -90,18 +93,36 @@ export class RegistryLimits {
         const ttsDaily=Array.from({length:7},(_,i)=>voiceDays.get(ago(i)) || {day:ago(i),synthesized_characters:0,cache_hits:0,quota_429:0});
         const throttles7={create:0,lookup:0};
         for(const row of this.sql.exec('SELECT kind,SUM(count) n FROM ops_throttles WHERE day>=? GROUP BY kind',ago(6))) throttles7[row.kind]=row.n;
+        // Cohorts: smoke-flagged, live non-smoke, and days left behind by deleted families.
+        const cohorts={};
+        for(const row of this.sql.exec(`SELECT CASE WHEN f.hash IS NULL THEN 'deleted' WHEN f.smoke THEN 'smoke' ELSE 'real' END cohort,
+            COUNT(DISTINCT d.hash) families,SUM(d.test) test,SUM(d.learn) learn,SUM(d.verse) verse
+            FROM ops_family_days d LEFT JOIN ops_families f ON f.hash=d.hash WHERE d.day>=? AND d.test+d.learn+d.verse>0 GROUP BY cohort`,ago(6)))
+          cohorts[row.cohort]={activeFamilies7:row.families,attempts7:{test:row.test,learn:row.learn,verse:row.verse}};
+        // Per-family practice days for live non-smoke families, keyed by a short hash prefix (numbers only).
+        const rows=new Map([...this.sql.exec('SELECT hash,created FROM ops_families WHERE smoke=0 ORDER BY active DESC LIMIT 200')]
+          .map(r=>[r.hash,{id:r.hash.slice(0,12),created:r.created,days:[]}]));
+        for(const d of this.sql.exec('SELECT hash,day,test,learn,verse FROM ops_family_days WHERE day>=? AND test+learn+verse>0 ORDER BY day',ago(27)))
+          rows.get(d.hash)?.days.push({day:d.day,test:d.test,learn:d.learn,verse:d.verse});
         return json({
           asOf:new Date().toISOString(),
           coverage:'Families observed since aggregate reporting was enabled; pre-existing creation dates unknown. Windows use UTC days.',
           families:f,attempts7:{test:a.test,learn:a.learn,verse:a.verse},pinLockouts7:a.pin_lockouts,throttles7,ttsDaily,
+          cohorts,familyDays28:[...rows.values()],
         });
       }
       const payload=await request.json();
       if(path==='/report') {
-        const {family,exists,created,active,days}=payload;
+        const {family,exists,created,active,days,smoke}=payload;
         if(!/^[a-f0-9]{64}$/.test(family)) return json({error:'Invalid report'},400);
-        if(exists) this.sql.exec('INSERT INTO ops_families VALUES(?,?,?) ON CONFLICT(hash) DO UPDATE SET active=excluded.active',family,created,active);
-        else this.sql.exec('DELETE FROM ops_families WHERE hash=?',family);
+        if(exists) this.sql.exec(`INSERT INTO ops_families(hash,created,active,smoke) VALUES(?,?,?,?)
+          ON CONFLICT(hash) DO UPDATE SET active=excluded.active,smoke=excluded.smoke`,family,created,active,smoke?1:0);
+        else {
+          // A deleted smoke family leaves no activity behind; real families keep theirs until it ages out.
+          const wasSmoke=[...this.sql.exec('SELECT smoke FROM ops_families WHERE hash=?',family)][0]?.smoke;
+          if(wasSmoke) this.sql.exec('DELETE FROM ops_family_days WHERE hash=?',family);
+          this.sql.exec('DELETE FROM ops_families WHERE hash=?',family);
+        }
         for(const d of days) this.sql.exec('INSERT INTO ops_family_days VALUES(?,?,?,?,?,?) ON CONFLICT(hash,day) DO UPDATE SET test=excluded.test,learn=excluded.learn,verse=excluded.verse,pin_lockouts=excluded.pin_lockouts',family,d.day,d.test,d.learn,d.verse,d.pin_lockouts);
         return json({ok:true});
       }
