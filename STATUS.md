@@ -4,7 +4,7 @@ The durable, non-code record for Spellami (named Family Practice until 2026-11-1
 
 **Keep this current.** Any change that ships, any decision made, or any roadmap shift updates this file in the same commit. Write current truth; replace stale lines instead of appending. This repo is public: never put credentials, account IDs, family codes, real children's names, private network addresses or personal infrastructure details here.
 
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 
 ## Live
 
@@ -64,6 +64,7 @@ Google was enabled after the first real Google round trip through shared Account
 - Parent-only management page, mobile editor sheets, and per-family MCP assistant connector.
 
 **Next up**
+- Verse first-letter ladder prepared on `verse-ladder` (shell v16), not yet deployed; local verification below.
 - Real-device pass on iPhone (installed PWA): header safe area, haptics, key sound, Aura playback after first tap.
 - Verse spaced repetition: extend the Leitner bank to verses, keyed by the current wording.
 - Parent view of the word bank: per-word box and due date, and the ability to retire or reset a word.
@@ -126,6 +127,29 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 - `signin` security, shell v11: encrypted/authenticated fpc2 MCP routing, unconditional legacy-link retirement and revocable retired-row UI; HMAC public account family references and PIN-cookie binding. No bare family routing hash in client responses. Existing links must be recreated after deployment; existing PIN cookies require unlock again. Sol identifier audit and Opus crypto review approved with no blockers. New regression checks cover IV/ciphertext/tag rejection before family dispatch, route swapping, legacy retirement, migration/revocation and no bare family-hash responses/cookies; browser retirement/revocation passes at three viewports.
 - `signin`: optional parent identities and code recovery; Family Code/PIN-only access unchanged. Singleton AccountStore v4, Google state/PKCE flow, hashed emailed codes, masked family links, opt-in Sunday 5pm weekly summaries, Tuesday/Friday review nudges and hourly batched class updates, signed one-click unsubscribe, numeric mail counters and a 500/day reservation cap. Google/Resend live delivery and production cron are unverified; no production changes made.
 - Verification: 151 unit tests (including eight email golden fixtures), uploader zero-network dry-run, local email-sink recovery smoke (76 checks), core API smoke (53 requests/65 assertions), desktop/mobile UI and parent/practice/sharing layout smokes pass. Sign-in UI smoke passes 193 assertions at desktop and 390×844, saves 44 screenshots plus eight email HTML samples, and reports zero console/CSP/third-party-request errors. Class publication API smoke also passes all 58 assertions, including the real ten-minute publish throttle. Independent auth review findings were fixed with regressions (pending-link revocation, safe Lock, auth lookup throttles, full multi-family digests).
+
+## Changelog — not yet deployed
+
+- 2026-11-17, shell v16: Incord-style verse ladder replaces whole-verse typing modes in the menu.
+  Four steps (visible, one-third hidden, two-thirds hidden, all hidden), first-letter taps/physical keys,
+  deterministic nested masks, visible-word type-along without memory credit, gentle same-step retries,
+  current-wording resume derived server-side, and shared server-authoritative scoring. Last-step 95%+
+  earns three stars; legacy advanced attempts still count. Read/listen and reference quiz remain.
+  No database migration, settings changes, runtime dependency, push or deployment.
+  Verification: `npm run check` passes 191 tests and the readability gate (no offender growth),
+  including unchanged email goldens and shared progress/digest/MCP policy coverage. Local API smoke:
+  69 requests / 92 assertions; desktop/mobile UI smoke: two journeys, no console/page/external-request
+  errors. Ladder Playwright: 390×844 touch + physical keys and 1280×900 physical keys; all four steps,
+  fail/retry, child-only resume, final mastery, zero console/page errors, eight screenshots.
+  Independent Opus review found a mobile input blocker; fixed with an always-available letter pad,
+  even when device keyboard settings are off. Document-level physical keys survive outside clicks;
+  accents share ASCII initials, invalid history is skipped, and rejected stale answers reload kid-scoped
+  wording before restarting. Final passes below 95% say “Step complete!” without changing scoring.
+  Ladder browser regressions also cover keyboard-off, lost focus and a simulated HTTP 400 restart
+  (zero unexpected errors; the deliberate 400 is expected). That failure-interception harness blocks
+  service workers; the separate two-journey UI smoke activates and verifies the real service worker.
+  Zero-network deploy dry-run includes the shared scorer and browser assets. Actual iPhone standalone
+  remains unverified; no production changes made.
 
 ## Changelog — local architecture work
 

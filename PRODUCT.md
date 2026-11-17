@@ -19,7 +19,7 @@ Installable PWA on one Cloudflare Worker. Mobile web, not native. The separate N
 
 ## Product Purpose
 
-Help a family keep a small daily habit: weekly spelling tests read aloud (word → sentence → word, one retry), a Learn mode with fading letter cues, Bible verse memorisation with progressive blanks, and progress a parent can review. Success is a kid finishing today's practice on their own and a parent seeing what still needs work.
+Help a family keep a small daily habit: weekly spelling tests read aloud (word → sentence → word, one retry), a Learn mode with fading letter cues, Bible verse memorisation with a four-step first-letter ladder (read along, then hide more words; no whole-verse typing), and progress a parent can review. Success is a kid finishing today's practice on their own and a parent seeing what still needs work.
 
 ## Positioning
 

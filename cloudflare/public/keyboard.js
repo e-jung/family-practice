@@ -25,9 +25,10 @@ function key(label, action, cls = "key", name = label) {
 /**
  * target(): the field to type into. action: optional primary button docked at
  * the bottom right (moved, not copied, so it keeps one accessible name).
- * space: "type" inserts a space; "next" moves to the next field (verse blanks).
+ * space: "type" inserts a space; "next" moves to the next field.
+ * onKey: first-letter input without a text field; hides space/delete and optionally adds digits.
  */
-export function createKeyboard({target, action = null, space = "type", symbols = false, next = null}) {
+export function createKeyboard({target, action = null, space = "type", symbols = false, next = null, onKey = null, numbers = false}) {
   let layer = "letters";
   const root = document.createElement("div");
   root.className = "keyboard";
@@ -37,6 +38,7 @@ export function createKeyboard({target, action = null, space = "type", symbols =
   const field = () => target();
   const fire = (f) => f.dispatchEvent(new Event("input", {bubbles: true}));
   function insert(text) {
+    if (onKey) { onKey(text); return; }
     const f = field();
     if (!f || f.disabled || f.readOnly) return;
     const start = f.selectionStart ?? f.value.length, end = f.selectionEnd ?? f.value.length;
@@ -44,6 +46,7 @@ export function createKeyboard({target, action = null, space = "type", symbols =
     fire(f);
   }
   function backspace() {
+    if (onKey) return;
     const f = field();
     if (!f || f.disabled) return;
     let start = f.selectionStart ?? f.value.length;
@@ -55,13 +58,20 @@ export function createKeyboard({target, action = null, space = "type", symbols =
   function draw() {
     const rows = layer === "letters" ? LETTERS : SYMBOLS;
     root.replaceChildren();
+    if (numbers && onKey) {
+      const digits = document.createElement("div");
+      digits.className = "keyrow";
+      for (const ch of "1234567890") digits.append(key(ch, () => insert(ch)));
+      root.append(digits);
+    }
     rows.forEach((row, i) => {
       const line = document.createElement("div");
       line.className = "keyrow";
       for (const ch of row) line.append(key(ch, () => insert(ch)));
-      if (i === rows.length - 1) line.append(key(icon("backspace"), backspace, "key wide", "Delete"));
+      if (!onKey && i === rows.length - 1) line.append(key(icon("backspace"), backspace, "key wide", "Delete"));
       root.append(line);
     });
+    if (onKey) return;
     const bottom = document.createElement("div");
     bottom.className = "keyrow bottom";
     if (symbols) bottom.append(key(layer === "letters" ? "123" : "abc", () => { layer = layer === "letters" ? "symbols" : "letters"; draw(); }, "key mode", layer === "letters" ? "Numbers and punctuation" : "Letters"));

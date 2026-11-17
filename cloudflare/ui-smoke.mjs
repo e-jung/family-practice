@@ -263,10 +263,13 @@ try {
     await page.getByLabel('Verse text · paste your chosen wording').fill('Jesus wept.');
     await page.getByRole('button',{name:'Save',exact:true}).click();
     await page.getByRole('button',{name:'Practice this verse'}).click();
-    await page.getByRole('button',{name:/From memory/}).click();
-    await page.getByLabel('Your verse from memory').fill('Jesus wept!');
-    await page.getByRole('button',{name:'Check my work'}).click();await page.getByText('100%',{exact:true}).waitFor();
+    await page.getByRole('button',{name:/Learn it/}).click();
+    await page.getByRole('heading',{name:'Step 1 of 4',exact:true}).waitFor();
+    await page.keyboard.type('jw');
+    await page.getByRole('button',{name:'Next step',exact:true}).click();
+    await page.getByRole('heading',{name:'Step 2 of 4',exact:true}).waitFor();
     await page.getByRole('button',{name:'Back to modes'}).click();
+    await page.getByRole('button',{name:'Back to verses'}).click();
     await page.getByRole('button',{name:'Progress',exact:true}).click();
     await page.getByRole('heading',{name:'Verse garden'}).waitFor();
     await page.getByText(verseMasteryCopy(), {exact:true}).waitFor();

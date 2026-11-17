@@ -26,7 +26,7 @@ Help families practice weekly spelling lists and parent-provided Bible verses, a
 
 | Layer | Where | Owns | Must not |
 |---|---|---|---|
-| Domain core | `lib/` (server) and pure modules in `cloudflare/public/` that both the browser and Worker import (no build step) | Answer checking, verse comparison, Leitner scheduling, verse mastery policy, round/Learn reducers, input validation, settings schema | Touch storage, network, DOM, `env` |
+| Domain core | `lib/` (server) and pure modules in `cloudflare/public/` that both the browser and Worker import (no build step) | Answer checking, verse comparison, Leitner scheduling, verse mastery policy, round/Learn/verse-ladder reducers, input validation, settings schema | Touch storage, network, DOM, `env` |
 | Worker edge | `cloudflare/worker.js` (routing), `core.js` (family storage/API), `tts.js`, `sharing.js`, `accounts.js`, `notifications.js`, `emails.js`, `mcp.js`, `legacy.js` | HTTP, Durable Objects, vendors | Re-implement a domain rule |
 | Browser shell | `cloudflare/public/app.js` (small router/shell) plus feature modules: practice, progress, parent, speech | Rendering and user events | Hold practice lifecycle in DOM flags or booleans |
 | Deploy | `cloudflare/deploy.mjs` | Upload plan, bindings, settings and instance profile | Hard-code an instance's identity |
@@ -40,6 +40,13 @@ One round engine drives practice; **spelling** and **verses** are its two subjec
 - **`cloudflare/settings.json`** (schema and defaults in one module): voice budgets, daily email cap, notification days and hours, review batch size and other operational limits. The deployer validates it and refuses to deploy invalid settings, so the last good version keeps running; the Worker validates again on load and falls back to defaults on error. Changing a value means editing the file and redeploying, with no code change.
 - **Instance profile** (`cloudflare/instances/<name>.json`, selected with `--instance`): canonical origin, email sender, legacy hostnames, shared-Accounts binding and sign-in switches. `jesklabs.json` is the hosted instance. With no profile, defaults are neutral: no legacy hosts, no Accounts binding, sign-in and notifications off, and the self-hoster supplies their own origin.
 - **Secrets** stay in the deployer's environment, never in either file.
+- **Verse ladder:** `public/verse-ladder.js` owns tokenization, nested deterministic spread masks,
+  scoring, allowance, progression and the named-state reducer; `verse-ladder-ui.js` is its DOM/network edge.
+  Fractions and allowance rules are frozen together in this shared pure module, not Worker-only
+  settings: no public settings bootstrap exists and cached browser shells must agree with server masks.
+  Changing these rules requires a coordinated shell/Worker release. No extra service or dependency.
+  The Worker derives safe per-verse resume steps from all current-wording attempts; kid responses
+  expose only those steps, never raw attempt history.
 - **Code:** everything else.
 
 ## Roadmap

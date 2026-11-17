@@ -1,5 +1,5 @@
 /* Bump VERSION for each shell release. Never cache family URLs or API data on disk. */
-const VERSION = 'v15';
+const VERSION = 'v16';
 const PREFIX = 'family-practice-shell-';
 const SHELL_CACHE = PREFIX + VERSION;
 const SHELL = [
@@ -15,6 +15,8 @@ const SHELL = [
   '/welcome.js',
   '/practice-round.js',
   '/verse-mastery.js',
+  '/verse-ladder.js',
+  '/verse-ladder-ui.js',
   '/identity.js',
   '/sharing-ui.js',
   '/qr.js',

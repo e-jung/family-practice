@@ -1,3 +1,4 @@
+import {openVerseLadder} from './verse-ladder-ui.js';
 // DOM edge: the shell supplies live app state and cross-feature actions.
 export function createVerseUI(ctx) {
   function verseHome() {
@@ -64,9 +65,7 @@ export function createVerseUI(ctx) {
   }
   const VERSE_MODES = [
     ["read", "Read & listen", "Hear the reference and the whole verse."],
-    ["blanks", "Fill the blanks", "Start with a few missing words, then hide more."],
-    ["first", "First-letter clues", "Type the verse with the first letter of each word."],
-    ["memory", "From memory", "Type the whole verse with no clues."],
+    ["ladder", "Learn it", "Tap first letters. Hide a little more each step."],
     ["reference", "Reference quiz", "Remember where the verse is found."],
   ];
   function verseMenu(v) {
@@ -108,21 +107,19 @@ export function createVerseUI(ctx) {
       ),
     );
   }
-  async function versePractice(v, mode, level = 25) {
+  async function versePractice(v, mode) {
+    if (mode === "ladder") return openVerseLadder(ctx, v, () => verseMenu(v));
     const previousView = ctx.viewVersion;
     const session = await ctx.api("/api/sessions", { kid_id: ctx.kid.id, kind: "verse" });
     if (previousView !== ctx.viewVersion) return;
     ctx.shell("practice", "verses");
     const modeName = Object.fromEntries(VERSE_MODES.map(([m, t]) => [m, t]))[mode];
-    const desk = ctx.el("section", { class: "desk" }),
-      ws = v.text.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) || [];
-    let indices = [],
-      blankInputs = [],
-      keyboard = null;
+    const desk = ctx.el("section", { class: "desk" });
+    let keyboard = null;
     ctx.app.append(
       ctx.practiceBand({
         title: mode === "reference" ? "Reference quiz" : v.reference,
-        status: modeName + (mode === "blanks" ? ` · ${level}% hidden` : ""),
+        status: modeName,
         exit: ctx.exitButton("Back to modes", () => verseMenu(v)),
       }),
       desk,
@@ -176,59 +173,8 @@ export function createVerseUI(ctx) {
       { type: "submit", form: "practice-form", class: "primary" },
       "Check my work",
     );
-    if (mode === "blanks") {
-      form.append(
-        ctx.el(
-          "div",
-          { class: "segments", role: "group", "aria-label": "How many words to hide" },
-          [25, 50, 75, 100].map((n) => {
-            const b = ctx.button(
-              `${n}%`,
-              () => versePractice(v, mode, n),
-              n === level ? "active" : "secondary",
-            );
-            b.setAttribute("aria-pressed", String(n === level));
-            b.setAttribute("aria-label", `${n}% hidden`);
-            return b;
-          }),
-        ),
-      );
-      indices = ctx
-        .shuffled(ws.map((_, i) => i))
-        .slice(0, Math.ceil((ws.length * level) / 100))
-        .sort((a, b) => a - b);
-      const blanks = ctx.el("div", { class: "blanks" });
-      ws.forEach((w, i) => {
-        if (indices.includes(i)) {
-          const n = ctx.practiceField(
-            ctx.input("blank-" + i, "", {
-              "aria-label": `Missing word ${i + 1}`,
-              autocomplete: "off",
-              autocorrect: "off",
-              autocapitalize: "none",
-              spellcheck: "false",
-            }),
-          );
-          blankInputs.push(n);
-          blanks.append(n);
-        } else blanks.append(ctx.el("span", {}, w));
-      });
-      form.append(
-        ctx.el(
-          "p",
-          { class: "muted" },
-          ctx.onScreenKeyboard()
-            ? "Type one word in each blank. Next moves to the following blank."
-            : "Type one word in each blank. Tab moves to the next one.",
-        ),
-        blanks,
-      );
-    }
-    if (mode === "first") form.append(ctx.el("p", { class: "verse" }, ws.map((w) => w[0] + "·").join(" ")));
-    if (mode === "reference") form.append(ctx.el("p", { class: "verse" }, v.text));
-    if (mode !== "blanks")
-      form.append(ctx.field(mode === "reference" ? "Reference" : "Your verse", response));
-    let current = blankInputs[0] || response;
+    form.append(ctx.el("p", { class: "verse" }, v.text), ctx.field("Reference", response));
+    let current = response;
     form.addEventListener("focusin", (e) => {
       if (e.target.matches("[data-practice-field]")) current = e.target;
     });
@@ -241,9 +187,7 @@ export function createVerseUI(ctx) {
           session_id: session.id,
           verse_id: v.id,
           mode,
-          level,
-          indices,
-          typed: mode === "blanks" ? blankInputs.map((n) => n.value).join(" ") : response.value,
+          typed: response.value,
         });
         await ctx.api("/api/sessions/complete", { session_id: session.id });
         ctx.stopSpeaking();
@@ -273,10 +217,7 @@ export function createVerseUI(ctx) {
           ctx.el(
             "div",
             { class: "row form-actions" },
-            ctx.button("Try this again", () => versePractice(v, mode, level), "primary"),
-            mode === "blanks" && level < 100
-              ? ctx.button("Next level", () => versePractice(v, mode, level + 25), "secondary")
-              : null,
+            ctx.button("Try this again", () => versePractice(v, mode), "primary"),
             ctx.button("Choose a mode", () => verseMenu(v), "secondary"),
           ),
         );
@@ -289,12 +230,7 @@ export function createVerseUI(ctx) {
     keyboard = ctx.dockKeyboard({
       target: () => current,
       action: submit,
-      symbols: mode !== "blanks",
-      space: mode === "blanks" ? "next" : "type",
-      next: () => {
-        const i = blankInputs.indexOf(current);
-        (blankInputs[i + 1] || blankInputs[0])?.focus();
-      },
+      symbols: true,
     });
     if (!keyboard) form.append(submit);
     ctx.focus(current);

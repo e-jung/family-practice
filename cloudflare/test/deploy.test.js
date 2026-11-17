@@ -21,13 +21,15 @@ try {
   const instance = JSON.parse(await readFile(new URL('../instances/jesklabs.json', import.meta.url)));
   await writeFile(join(root, 'cloudflare/instances/jesklabs.json'), JSON.stringify(instance));
   const plan = await buildPlan(root);
-  assert.equal(Object.keys(plan.manifest).length, 3);
+  assert.equal(Object.keys(plan.manifest).length, 4);
+  assert.ok(plan.manifest['/verse-ladder.js'], 'shared scorer is also a browser asset');
   assert.equal(plan.config._headers, '/*\n  X-Test: yes\n');
   assert.ok(!plan.manifest['/_headers'] && !plan.manifest['/_redirects']);
   assert.ok(Object.values(plan.manifest).every(x => /^[a-f0-9]{32}$/.test(x.hash)));
   const dryRun = await deploy({ root, instance: 'jesklabs', dryRun: true, env: {}, log() {}, fetchImpl() { throw Error('Network forbidden'); } });
   assert.equal(dryRun.metadata_if_first_deployment.observability.logs.invocation_logs, false, 'bearer URLs must not enter invocation logs');
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/mcp.js'));
+  assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/public/verse-ladder.js'));
   assert.ok(dryRun.modules.some(m=>m.name==='cloudflare/sharing.js'));
   assert.deepEqual(dryRun.metadata_if_live_v2.migrations, {old_tag:'v2',new_tag:'v4',steps:[{new_sqlite_classes:['ShareStore']},{new_sqlite_classes:['AccountStore']}]});
   assert.deepEqual(dryRun.metadata_if_live_v3.migrations, {old_tag:'v3',new_tag:'v4',steps:[{new_sqlite_classes:['AccountStore']}]});

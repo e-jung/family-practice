@@ -9,7 +9,7 @@ Spellami (spell + French *ami*, "spelling friend") helps families practice weekl
 The app was called Family Practice until 2026-11-15. Internal identifiers keep that name on purpose: the Worker `family-practice` (its Durable Object namespaces hold all family data), `family-practice-*` storage keys and cache prefixes, and the shared Accounts client id `spelling` / `SpellingClient` (pairwise subjects derive from it). Never rename those. The old hosted hostname `spelling.jesklabs.com` stays bound to the same Worker as a `LEGACY_HOSTS` entry (`cloudflare/legacy.js`): pages 301 and `/mcp` 308 to `APP_ORIGIN`, old APIs return 410, and `/sw.js` stays a 200 handoff service worker that forwards a device's saved Family Code to the new origin's `/f/<code>` join page and then unregisters. Keep that hostname attached and the handoff in place indefinitely; printed codes, QR class links and installed PWAs point at it.
 
 - Spelling: word → sentence → word, one retry, letter-by-letter reveal, missed-word rounds, and cross-list tricky words.
-- Verses: read/listen, progressive blanks, first letters, memory typing, and reference quiz. Mastery is tied to the current wording.
+- Verses: read/listen, a four-step first-letter Learn-it ladder, and reference quiz. Mastery is tied to the current wording.
 - Progress: first-try accuracy, missed words, verse mastery, and practice streaks.
 - The multi-family build uses a Family Code for kid access and a per-family Parent PIN for edits. No accounts required. Optional Jesklabs sign-in, shared by Jesklabs apps; it stores your email and which Jesklabs apps you use. Parent sign-in is optional (Google or emailed code through shared Accounts); it can link/recover families and enable explicitly opted-in emails. Code/PIN-only access remains available without an account. An unlinked lost code is not recoverable; support printed codes and backups.
 - Collect only first names or nicknames and optional grade labels. Do not add child last names, email, birth dates, schools, or photos. Optional parent accounts store verified parent email only; never require child accounts.
@@ -34,7 +34,8 @@ Do not restore its server, UI, Piper adapter or deployment files.
 - `spelling.js` renders spelling, Learn and due-review flows; `practice-round.js` is the pure named-state/event spelling reducer (including retries, reveal, next, quit and skip semantics). Its subject registry admits verse lifecycle policies later; Learn retains its existing `learn.js` reducer, and verses are not forced into spelling's retry lifecycle.
 - `verses.js` owns verse practice; `progress.js` owns progress and charts; `parent.js` owns editing/settings; `welcome.js` owns landing/privacy; `speech.js` owns speech playback/cache/cancellation.
 - `verse-mastery.js` is the single pure verse-star/history policy and explanatory copy, imported by progress, Worker progress and the email-digest edge. It is uploaded both as a browser asset and a Worker module.
-- Shell v15 precaches every feature/policy module. No build step, runtime dependency or extra service was added.
+- `verse-ladder.js` is the shared pure mask/scoring/reducer policy; `verse-ladder-ui.js` renders it.
+- Shell v16 precaches every feature/policy module. No build step, runtime dependency or extra service was added.
 
 ## Worker architecture and limits
 

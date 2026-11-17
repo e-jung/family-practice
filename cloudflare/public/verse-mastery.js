@@ -15,9 +15,11 @@ export function verseMastery(verse, attempts) {
     attempt.verse_reference === verse.reference,
   ).slice(0, policy.recentAttempts);
   // Read/listen counts in the history window, but never earns stars.
-  const best = Math.max(0, ...recent.filter(attempt => attempt.mode !== "read").map(attempt => attempt.accuracy));
+  const scored = recent.filter(a => a.mode !== "read" && !(a.mode === "ladder" && a.level === 1));
+  const best = Math.max(0, ...scored.map(attempt => attempt.accuracy));
   const advanced = recent.some(attempt =>
-    policy.advancedModes.includes(attempt.mode) && attempt.accuracy >= policy.twoStars,
+    (policy.advancedModes.includes(attempt.mode) || (attempt.mode === "ladder" && attempt.level === 4)) &&
+      attempt.accuracy >= policy.twoStars,
   );
   return {
     id: verse.id,
@@ -31,6 +33,6 @@ export function verseMastery(verse, attempts) {
 // Keep explanatory UI copy tied to the same thresholds as progress and email.
 export function verseMasteryCopy() {
   const {oneStar, twoStars} = VERSE_MASTERY_POLICY;
-  return `One star: ${oneStar}%+. Two: ${twoStars}%+. Three: ${twoStars}%+ from memory or with first-letter clues. ` +
-    "Read & listen doesn’t earn stars.";
+  return `One star: ${oneStar}%+. Two: ${twoStars}%+. Three: ${twoStars}%+ on the last Learn-it step. ` +
+    "Read & listen and Learn-it step 1 don’t earn stars.";
 }

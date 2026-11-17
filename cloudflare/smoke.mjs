@@ -57,8 +57,23 @@ try {
   check((await req('/api/progress?kid=1')).body.listsCompleted,1);
   const vs=(await req('/api/sessions',{kid_id:1,kind:'verse'})).body;
   check((await req('/api/verse-attempts',{session_id:vs.id,verse_id:verse.body.id,mode:'memory',typed:'Jesus wept!'})).body.accuracy,100);
+  const ladder={session_id:vs.id,verse_id:verse.body.id,mode:'ladder'};
+  for(const [level,typed] of [[1,''],[2,'j'],[3,'j'],[4,'jw']]) {
+    const result=await req('/api/verse-attempts',{...ladder,level,typed});
+    check(result.status,200);check(result.body.accuracy,level===1?0:100);check(result.body.passed,true);
+  }
+  const ladderMiss=await req('/api/verse-attempts',{...ladder,level:4,typed:'xx',accuracy:100,passed:true});
+  check(ladderMiss.status,200);check(ladderMiss.body.accuracy,0);check(ladderMiss.body.passed,false);
+  for(const invalid of [
+    {level:0,typed:''},{level:5,typed:''},{level:'4',typed:'jw'},
+    {level:1},{level:1,typed:null},{level:1,typed:0},{level:1,typed:' '},
+    {level:4,typed:'j'},{level:4,typed:'jww'},{level:4,typed:'j!'},
+  ])check((await req('/api/verse-attempts',{...ladder,...invalid})).status,400);
   check((await req('/api/parent/unlock',{pin:'1234'})).status,200);
   const backup=(await req('/api/admin/export')).body;
+  check(backup.verse_attempts.filter(a=>a.mode==='ladder').length,5);
+  const badLadder=structuredClone(backup);badLadder.verse_attempts.find(a=>a.mode==='ladder').level=5;
+  check((await req('/api/admin/import',badLadder)).status,400);
   check((await req('/api/admin/import',backup)).status,200);
   const restored=(await req('/api/admin/export')).body;
   check({...restored,exported_at:''},{...backup,exported_at:''});

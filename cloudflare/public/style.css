@@ -442,3 +442,11 @@ input, textarea, select { font-size: max(1rem, 16px); }
   body.printing-share > :not(dialog[open]) { display: none !important; }
   body.printing-share dialog[open] { position: static; width: 100%; max-height: none; box-shadow: none; overflow: visible; }
 }
+
+/* First-letter verse ladder: word-sized blanks and a clear current tap target. */
+.ladder-desk:focus { outline: none; }
+.ladder-words { line-height: 2.1; overflow-wrap: anywhere; }
+.ladder-word { border-radius: .2em; padding: .08em .12em; }
+.ladder-word.current { background: var(--marigold, #f3c34e); color: #172b40; outline: 2px solid currentColor; }
+.ladder-word.hidden-word { letter-spacing: .04em; }
+.ladder-word.miss { text-decoration: underline wavy; text-underline-offset: .2em; }

@@ -111,7 +111,7 @@ async function api(p, data, method = "POST") {
         },
   );
   const b = await r.json();
-  if (!r.ok) throw Error(b.error || "Please try again");
+  if (!r.ok) throw Object.assign(Error(b.error || "Please try again"), {status: r.status});
   return b;
 }
 const focus = (n) => setTimeout(() => n?.focus(), 40);
@@ -260,7 +260,7 @@ function practiceField(node) {
   return node;
 }
 function dockKeyboard(options) {
-  if (!onScreenKeyboard()) return null;
+  if (!options.force && !onScreenKeyboard()) return null;
   const keyboard = createKeyboard(options);
   app.append(keyboard);
   return keyboard;

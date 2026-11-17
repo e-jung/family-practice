@@ -1,4 +1,5 @@
 import {verseMastery} from './public/verse-mastery.js';
+import {scoreLadder, startingStep} from './public/verse-ladder.js';
 import {settingsFor} from './runtime-settings.js';
 import {authConfig} from './accounts.js';
 import {createSharing} from './sharing.js';
@@ -28,6 +29,17 @@ const date = (v) => {
     fail("Invalid date");
   return v;
 };
+const verseModes = ["read", "blanks", "first", "memory", "reference", "ladder"];
+function ladderResult(text, level, typed) {
+  if (typeof typed !== "string" || typed.length > 10000) fail("Invalid ladder answer");
+  if (!Number.isSafeInteger(level) || level < 1 || level > 4) fail("Invalid ladder level");
+  try {
+    return scoreLadder(text, level, typed);
+  } catch (error) {
+    if (error instanceof RangeError) fail("Invalid ladder answer");
+    throw error;
+  }
+}
 export function createHandler(ctx, env) {
   const sql = ctx.storage.sql;
   sql.exec("CREATE TABLE IF NOT EXISTS family(id INTEGER PRIMARY KEY,name TEXT NOT NULL,pin_salt TEXT NOT NULL,pin_hash TEXT NOT NULL,session_epoch TEXT NOT NULL)");
@@ -257,6 +269,7 @@ export function createHandler(ctx, env) {
       mastery,
       sessions: ss.slice(0, 30),
       attempts: all("SELECT a.*,w.sentence FROM attempts a JOIN words w ON w.id=a.word_id WHERE a.kid_id=? ORDER BY a.id DESC LIMIT 200",kid),
+      ladderSteps: all("SELECT * FROM verses WHERE kid_id=?", kid).map(v => ({id: v.id, step: startingStep(v, va)})),
       verseAttempts: va.slice(0, 100),
     };
   }
@@ -314,6 +327,7 @@ export function createHandler(ctx, env) {
         if (t === "verse_attempts") {
           row.verse_text ??= "";
           row.verse_reference ??= "";
+          if (!verseModes.includes(row.mode)) fail("Invalid verse mode");
         }
         for (const col of schemas[t]) {
           const val = row[col.name];
@@ -360,9 +374,14 @@ export function createHandler(ctx, env) {
         !ids.sessions.has(row.session_id)
       )
         fail("Broken attempt reference");
-    for (const row of b.verse_attempts)
+    for (const row of b.verse_attempts) {
       if (!ids.verses.has(row.verse_id) || !ids.sessions.has(row.session_id))
         fail("Broken verse attempt reference");
+      if (row.mode === "ladder") {
+        const verse = b.verses.find(v => v.id === row.verse_id);
+        ladderResult(row.verse_text || verse.text, row.level, row.typed);
+      }
+    }
     const imported = Object.fromEntries(
       b.settings.map((s) => [s.key, s.value]),
     );
@@ -724,10 +743,10 @@ export function createHandler(ctx, env) {
         )
           fail("Invalid verse session");
         if (
-          !["read", "blanks", "first", "memory", "reference"].includes(b.mode)
+          !verseModes.includes(b.mode)
         )
           fail("Invalid verse mode");
-        const typed = str(b.typed ?? "", 10000, false);
+        const typed = b.mode === "ladder" ? b.typed : str(b.typed ?? "", 10000, false);
         let expected = b.mode === "reference" ? v.reference : v.text,
           level = b.level ?? 0;
         if (!Number.isSafeInteger(level) || level < 0 || level > 100) fail("Invalid level");
@@ -745,8 +764,9 @@ export function createHandler(ctx, env) {
             fail("Invalid blank selection");
           expected = b.indices.map((i) => ws[i]).join(" ");
         }
-        const result =
-          b.mode === "read"
+        const result = b.mode === "ladder"
+          ? ladderResult(v.text, level, typed)
+          : b.mode === "read"
             ? { accuracy: 0, details: [] }
             : compareVerse(expected, typed);
         run(

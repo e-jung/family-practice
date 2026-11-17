@@ -37,5 +37,11 @@ test('history matches exact wording and reference before taking the newest ten; 
 test('UI explanation comes from the shared thresholds and preserves current copy', () => {
   assert.equal(VERSE_MASTERY_POLICY.recentAttempts, 10);
   assert.equal(verseMasteryCopy(),
-    'One star: 70%+. Two: 95%+. Three: 95%+ from memory or with first-letter clues. Read & listen doesn’t earn stars.');
+    'One star: 70%+. Two: 95%+. Three: 95%+ on the last Learn-it step. Read & listen and Learn-it step 1 don’t earn stars.');
+});
+
+test('ladder type-along earns nothing; only final step can earn three stars', () => {
+  for (const [level, stars] of [[1, 0], [2, 2], [3, 2], [4, 3]]) {
+    assert.equal(verseMastery(verse, [attempt('ladder', 100, {level})]).stars, stars);
+  }
 });
