@@ -134,6 +134,7 @@ Newest first. Each entry gives what was decided and why; if a decision is revers
 
 ## Changelog (deploys)
 
+- 2026-11-17 no spoken spell-out (shell v17): after a second miss the word stays on screen and its cached clip replays slowly instead of synthesizing a new letter-by-letter clip (owner request; the kids can see the word, and each spell-out cost new voice characters). UI smoke now asserts the second miss makes no new cloud request.
 - 2026-11-17 voice budget raise (settings only, shell v16): per-family voice budget 1,500 → 4,000 characters/UTC day and per-IP 2,000 → 4,000/hour; global 6,000/day unchanged (stays inside the Workers AI free allowance). Why: a real family hit the family cap mid-test after adding a new list (five `/api/tts` 429s at 02:25Z); the device-voice fallback was silent on desktop Chrome/Linux, so words weren't read aloud.
 - 2026-11-17 deploy (`501f646`), shell v16: Incord-style verse ladder replaces whole-verse typing modes in the menu. Live: prod smoke 69 requests/91 assertions; sw v16 and `verse-ladder.js` served; `spelling.jesklabs.com` 301s. Physical iOS unverified. Before deploy:
   Four steps (visible, one-third hidden, two-thirds hidden, all hidden), first-letter taps/physical keys,

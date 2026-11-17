@@ -619,8 +619,8 @@ export function createSpellingUI(ctx) {
             } else {
               feedback.textContent = "Let’s learn it: " + w.word;
               feedback.className = "feedback retry";
-
-              ctx.say(`${w.word}. ${[...w.word].join(", ")}. ${w.word}.`, 0.8);
+              // The word is on screen; replay its cached clip slowly instead of a new spelled-out clip.
+              ctx.say(w.word, 0.8);
             }
             if (ctx.roundDone(round)) {
               answer.disabled = ctx.roundDone(round);

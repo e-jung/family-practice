@@ -236,7 +236,7 @@ try {
       await page.waitForFunction(()=>window.testAudioEnded>=7);
       await page.getByLabel('Type the spelling word').fill('wrong again');await page.getByRole('button',{name:'Check word'}).click();
       await page.waitForFunction(()=>window.testAudioEnded>=8);
-      assert.equal(requests.filter(t=>t==='friend. f, r, i, e, n, d. friend.').length,1,'letters use a single cloud request');
+      assert.equal(requests.length,count,'second miss replays the cached word clip, no new cloud request');
     } else {
       await page.waitForFunction(()=>window.testSpoken.length>=3);
       assert.equal(await page.locator('#voice-status').textContent(),'Device voice active · cloud voice temporarily unavailable');

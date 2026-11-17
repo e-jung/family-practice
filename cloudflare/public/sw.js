@@ -1,5 +1,5 @@
 /* Bump VERSION for each shell release. Never cache family URLs or API data on disk. */
-const VERSION = 'v16';
+const VERSION = 'v17';
 const PREFIX = 'family-practice-shell-';
 const SHELL_CACHE = PREFIX + VERSION;
 const SHELL = [

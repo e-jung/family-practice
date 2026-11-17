@@ -35,7 +35,7 @@ Wrangler **4.161.0**, fresh disposable persistence, test-only secrets:
 
 - Numbered Copy → Fade → Fade more → Recall stages, short-word two-stage path, exactly one accessible/current stage, intentional miss/backtracking, summary, skip-to-recall, honest skip records and same-list Learn-to-Test shortcut.
 - Due Review session, test-style flow, next-review empty state, brand-new empty state, word-bank groups, and parent data.
-- Existing onboarding, spelling retries/spell-out/results, verses, progress, family switching/join/privacy, PWA manifest/icons/service-worker activation, key sounds and iOS switch-overlay coverage retained.
+- Existing onboarding, spelling retries/results, verses, progress, family switching/join/privacy, PWA manifest/icons/service-worker activation, key sounds and iOS switch-overlay coverage retained.
 - **Zero unexpected console/page errors or third-party requests.** Deliberately mocked HTTP 503 audio failures are expected browser resource diagnostics, excluded from unexpected errors.
 - Mocked real MP3 decoding/playback, device speech instrumentation, timeout/503 fallback, pitch preservation, replay cache/prefetch and navigation cancellation remain covered (**13 successful mocked cloud requests / 6 mocked 503 requests**). Audio was not listened to by a human.
 
