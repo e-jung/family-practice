@@ -431,9 +431,10 @@ export function createSpellingUI(ctx) {
         ctx.el(
           "div",
           { class: "listen" },
+          ctx.button([ctx.icon("speaker"), "Say again"], () => ctx.say(w.word), "secondary"),
           ctx.button(
-            [ctx.icon("speaker"), "Say again"],
-            () => ctx.say([w.word, w.sentence, w.word]),
+            [ctx.icon("sentence"), "Sentence"],
+            () => (w.sentence ? ctx.say(w.sentence) : ctx.toast("This word has no sentence.")),
             "secondary",
           ),
         ),
@@ -447,7 +448,12 @@ export function createSpellingUI(ctx) {
     );
     if (!ctx.dockKeyboard({ target: () => answer, action: actions })) form.append(actions);
     ctx.focus(answer);
-    ctx.say([w.word, w.sentence, w.word]);
+    // Word, sentence, word once per word; later stages and retries say just the word.
+    if (round.introduced === round.index) ctx.say(w.word);
+    else {
+      round.introduced = round.index;
+      ctx.say([w.word, w.sentence, w.word]);
+    }
     ctx.prefetchSpeech(
       round.ws.slice(round.index, round.index + 2).flatMap((word) => [word.word, word.sentence]),
     );

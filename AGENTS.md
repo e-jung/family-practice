@@ -35,7 +35,7 @@ Do not restore its server, UI, Piper adapter or deployment files.
 - `verses.js` owns verse practice; `progress.js` owns progress and charts; `parent.js` owns editing/settings; `welcome.js` owns landing/privacy; `speech.js` owns speech playback/cache/cancellation.
 - `verse-mastery.js` is the single pure verse-star/history policy and explanatory copy, imported by progress, Worker progress and the email-digest edge. It is uploaded both as a browser asset and a Worker module.
 - `verse-ladder.js` is the shared pure mask/scoring/reducer policy; `verse-ladder-ui.js` renders it.
-- Shell v16 precaches every feature/policy module. No build step, runtime dependency or extra service was added.
+- Shell v18 precaches every feature/policy module. No build step, runtime dependency or extra service was added.
 
 ## Worker architecture and limits
 

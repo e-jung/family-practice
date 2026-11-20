@@ -58,9 +58,12 @@ async function learnList(page) {
   await page.getByRole('button',{name:'Spelling',exact:true}).click();
   await page.getByRole('button',{name:'+ Add spelling list',exact:true}).click();
   await page.getByLabel('Week title').fill('Learn week');
-  await page.getByLabel('One word per line').fill('friend\nlight\nkind\ncat');
+  await page.getByLabel('One word per line').fill('friend | My friend is kind.\nlight\nkind\ncat');
   await page.getByRole('button',{name:'Save',exact:true}).click();
   const list=page.locator('section, article, .card').filter({has:page.getByRole('heading',{name:'Learn week',exact:true})}).last();
+  const plays=()=>page.evaluate(()=>window.testSpoken.length+window.testAudioStarted);
+  const playsAt=n=>page.waitForFunction(n=>window.testSpoken.length+window.testAudioStarted>=n,n);
+  let mark=await plays();
   await list.getByRole('button',{name:'Learn',exact:true}).click();
   const shuffle=page.getByLabel('Shuffle the words');
   if(await shuffle.count())await shuffle.uncheck();
@@ -82,6 +85,11 @@ async function learnList(page) {
         assert.equal(await indicator.getByRole('button').count(),stages.length-1,'every other stage is a tappable jump');
       }
       catch (error) { console.log("Learn stage mismatch", {word,stage,visible:await page.locator("#app").innerText()}); throw error; }
+      if(word === 'friend' && stage === 0) { await playsAt(mark+3); mark=await plays(); }
+      if(word === 'friend' && stage === 50) {
+        await playsAt(mark+1);await page.waitForTimeout(800);
+        assert.equal(await plays(),mark+1,'later Learn stages say only the word, not the sentence again');
+      }
       if(word === 'friend' && stage === 50) {
         await answer.fill('frend');
         await page.getByRole('button',{name:'Check word'}).click();
